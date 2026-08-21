@@ -50,15 +50,15 @@ SEED_ROWS = (
     ),
     (
         "IBU-C",
-        "BL-LEGIT-099",
-        "sea_breeze",
-        "V900",
-        "abc_trading",
-        "INMUN",
-        "LKCMB",
-        "rice",
-        "300",
-        "2024-09-01",
+        "BL-007",
+        "pacific_star",
+        "V701",
+        "stu_exports",
+        "INCCU",
+        "THLCH",
+        "tea",
+        "650",
+        "2024-09-03",
     ),
     (
         "IBU-A",
@@ -134,24 +134,29 @@ def _signal(index: int, row: tuple[str, ...]) -> RegistrySignal:
     )
 
 
+async def seed_cross_ibu_registry(services: Services) -> None:
+    """Idempotently load normalized synthetic signals without raw documents."""
+    started = datetime.now(UTC)
+    for index, row in enumerate(SEED_ROWS):
+        registered_at = started + timedelta(microseconds=index)
+        registration = await services.cross_ibu_registry.register(
+            _signal(index, row), registered_at
+        )
+        await services.audit_store.record(
+            AuditEvent(
+                case_id=None,
+                actor_id="registry-seed",
+                event_type="CROSS_IBU_REGISTERED",
+                payload_ref=f"registry://{registration.registration_id}",
+                created_at=registered_at,
+            )
+        )
+
+
 async def main() -> None:
     services = Services.build(Settings.from_env())
     try:
-        started = datetime.now(UTC)
-        for index, row in enumerate(SEED_ROWS):
-            registered_at = started + timedelta(microseconds=index)
-            registration = await services.cross_ibu_registry.register(
-                _signal(index, row), registered_at
-            )
-            await services.audit_store.record(
-                AuditEvent(
-                    case_id=None,
-                    actor_id="registry-seed",
-                    event_type="CROSS_IBU_REGISTERED",
-                    payload_ref=f"registry://{registration.registration_id}",
-                    created_at=registered_at,
-                )
-            )
+        await seed_cross_ibu_registry(services)
         print("Seeded 8 normalized synthetic cross-IBU registry signals")
     finally:
         await services.close()

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { DashboardCase, getCases, TOKEN_KEY } from "../lib/api";
+import { AwsBadge } from "./aws-badge";
 
 type RiskFilter = "ALL" | "HIGH" | "MEDIUM" | "LOW";
 
@@ -65,7 +66,7 @@ export default function Home() {
       <div className="prototypeNote"><strong>Investigation support only</strong><p>Risk signals are not proof. Every consequential action requires human approval.</p></div>
     </aside>
     <section className="reviewMain">
-      <header className="reviewHeader"><div><p className="eyebrow">GIFT City IBU · Secure workspace</p><h1>Human review queue</h1></div>{token ? <button className="sessionButton" onClick={clearSession}>End secure session</button> : <span className="secureState">JWT required</span>}</header>
+      <header className="reviewHeader"><div><p className="eyebrow">GIFT City IBU · Secure workspace</p><h1>Human review queue</h1></div><div className="headerActions"><AwsBadge />{token ? <button className="sessionButton" onClick={clearSession}>End secure session</button> : <span className="secureState">JWT required</span>}</div></header>
       <section className="queueHero" id="queue"><div><p className="kicker">Evidence-led decisions</p><h2>Cases requiring your judgment.</h2><p>Review the complete investigation record before approving, holding, escalating, or requesting more evidence.</p></div><div className="queueMetric"><strong>{cases.length}</strong><span>cases in your IBU</span><small>{highCount} high-risk {highCount === 1 ? "case" : "cases"}</small></div></section>
       {!token && <form className="authPanel" onSubmit={saveSession}><div><p className="eyebrow">Authenticated access</p><h3>Start a secure officer session</h3><p>Paste the short-lived JWT issued by your identity provider. It is kept in this browser only.</p></div><label><span>Bearer token</span><input type="password" required value={tokenInput} onChange={(event) => setTokenInput(event.target.value)} autoComplete="off" placeholder="eyJhbGciOi…" /></label><button>Load my IBU cases</button></form>}
       {token && <section className="queuePanel">

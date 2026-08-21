@@ -42,6 +42,7 @@ def deterministic_risk_score(state: InvestigationState) -> tuple[int, RiskBand]:
                 score += 90
     if state.completeness is not None and state.completeness.status.value == "INCOMPLETE":
         score += 25
-    band = RiskBand.LOW if score <= 29 else RiskBand.MEDIUM if score <= 69 else RiskBand.HIGH
+    # Sprint 10 demo calibration: a single significant price signal (55) reaches
+    # HIGH. These remain prototype investigation thresholds, not standards.
+    band = RiskBand.LOW if score <= 29 else RiskBand.MEDIUM if score <= 54 else RiskBand.HIGH
     return score, band
-

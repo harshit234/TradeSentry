@@ -16,7 +16,9 @@ def test_health_reports_foundation_components_ok() -> None:
         "redis": "ok",
         "s3": "ok",
         "textract": "ok",
+        "dynamodb": "ok",
         "version": "0.1.0",
         "aws_region": "ap-south-1",
         "deployment": "local-compose",
+        "infrastructure_note": "Local development environment",
     }

@@ -1,22 +1,21 @@
-terraform {
-  required_version = ">= 1.7.0"
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = ">= 5.80, < 6.0"
-    }
+data "aws_caller_identity" "current" {}
+
+data "aws_vpc" "default" {
+  default = true
+}
+
+data "aws_subnets" "default" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.default.id]
   }
 }
 
-provider "aws" {
-  region  = var.aws_region
-  profile = var.aws_profile
-}
-
-data "aws_caller_identity" "current" {}
-
 locals {
-  name = "tradesentry-${var.environment}"
+  name       = "tradesentry-${var.environment}"
+  vpc_id     = coalesce(var.vpc_id, data.aws_vpc.default.id)
+  subnet_ids = length(var.subnet_ids) > 0 ? var.subnet_ids : data.aws_subnets.default.ids
+  vpc_cidr   = coalesce(var.vpc_cidr, data.aws_vpc.default.cidr_block)
   registry_gsi_arns = [
     "${aws_dynamodb_table.trade_finance_registry.arn}/index/gsi_bl_number",
     "${aws_dynamodb_table.trade_finance_registry.arn}/index/gsi_vessel_date",
@@ -24,10 +23,41 @@ locals {
   ]
 }
 
+data "aws_iam_policy_document" "kms" {
+  statement {
+    sid       = "EnableAccountIAM"
+    effect    = "Allow"
+    actions   = ["kms:*"]
+    resources = ["*"]
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
+    }
+  }
+  statement {
+    sid    = "AllowCloudWatchLogs"
+    effect = "Allow"
+    actions = [
+      "kms:Encrypt", "kms:Decrypt", "kms:ReEncrypt*", "kms:GenerateDataKey*", "kms:DescribeKey"
+    ]
+    resources = ["*"]
+    principals {
+      type        = "Service"
+      identifiers = ["logs.${var.aws_region}.amazonaws.com"]
+    }
+    condition {
+      test     = "ArnLike"
+      variable = "kms:EncryptionContext:aws:logs:arn"
+      values   = ["arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/ecs/tradesentry/*"]
+    }
+  }
+}
+
 resource "aws_kms_key" "documents" {
   description             = "TradeSentry document and data envelope encryption"
   deletion_window_in_days = 30
   enable_key_rotation     = true
+  policy                  = data.aws_iam_policy_document.kms.json
 }
 
 resource "aws_kms_alias" "documents" {
@@ -108,7 +138,7 @@ resource "aws_s3_bucket_policy" "documents" {
 # Private data-plane security groups: only ECS may reach PostgreSQL or Redis.
 resource "aws_security_group" "ecs" {
   name   = "${local.name}-ecs"
-  vpc_id = var.vpc_id
+  vpc_id = local.vpc_id
   egress {
     from_port   = 443
     to_port     = 443
@@ -119,19 +149,71 @@ resource "aws_security_group" "ecs" {
     from_port   = 5432
     to_port     = 5432
     protocol    = "tcp"
-    cidr_blocks = [var.vpc_cidr]
+    cidr_blocks = [local.vpc_cidr]
   }
   egress {
     from_port   = 6379
     to_port     = 6379
     protocol    = "tcp"
-    cidr_blocks = [var.vpc_cidr]
+    cidr_blocks = [local.vpc_cidr]
   }
+  egress {
+    from_port   = 53
+    to_port     = 53
+    protocol    = "udp"
+    cidr_blocks = [local.vpc_cidr]
+  }
+  egress {
+    from_port   = 53
+    to_port     = 53
+    protocol    = "tcp"
+    cidr_blocks = [local.vpc_cidr]
+  }
+}
+
+resource "aws_security_group" "alb" {
+  name   = "${local.name}-alb"
+  vpc_id = local.vpc_id
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = var.allowed_ingress_cidrs
+  }
+}
+
+resource "aws_vpc_security_group_ingress_rule" "ecs_api_from_alb" {
+  security_group_id            = aws_security_group.ecs.id
+  referenced_security_group_id = aws_security_group.alb.id
+  from_port                    = 8000
+  to_port                      = 8000
+  ip_protocol                  = "tcp"
+}
+resource "aws_vpc_security_group_ingress_rule" "ecs_web_from_alb" {
+  security_group_id            = aws_security_group.ecs.id
+  referenced_security_group_id = aws_security_group.alb.id
+  from_port                    = 3000
+  to_port                      = 3000
+  ip_protocol                  = "tcp"
+}
+resource "aws_vpc_security_group_egress_rule" "alb_to_api" {
+  security_group_id            = aws_security_group.alb.id
+  referenced_security_group_id = aws_security_group.ecs.id
+  from_port                    = 8000
+  to_port                      = 8000
+  ip_protocol                  = "tcp"
+}
+resource "aws_vpc_security_group_egress_rule" "alb_to_web" {
+  security_group_id            = aws_security_group.alb.id
+  referenced_security_group_id = aws_security_group.ecs.id
+  from_port                    = 3000
+  to_port                      = 3000
+  ip_protocol                  = "tcp"
 }
 
 resource "aws_security_group" "rds" {
   name   = "${local.name}-rds"
-  vpc_id = var.vpc_id
+  vpc_id = local.vpc_id
   ingress {
     from_port       = 5432
     to_port         = 5432
@@ -142,7 +224,7 @@ resource "aws_security_group" "rds" {
 
 resource "aws_security_group" "redis" {
   name   = "${local.name}-redis"
-  vpc_id = var.vpc_id
+  vpc_id = local.vpc_id
   ingress {
     from_port       = 6379
     to_port         = 6379
@@ -153,7 +235,7 @@ resource "aws_security_group" "redis" {
 
 resource "aws_db_subnet_group" "main" {
   name       = local.name
-  subnet_ids = var.private_subnet_ids
+  subnet_ids = local.subnet_ids
 }
 
 resource "aws_db_parameter_group" "postgres_ssl" {
@@ -189,7 +271,7 @@ resource "aws_db_instance" "postgres" {
 
 resource "aws_elasticache_subnet_group" "main" {
   name       = local.name
-  subnet_ids = var.private_subnet_ids
+  subnet_ids = local.subnet_ids
 }
 
 resource "aws_elasticache_replication_group" "redis" {
@@ -302,12 +384,8 @@ resource "aws_iam_role_policy" "ecs_task" {
     },
     {
       Sid      = "RegistryOnly", Effect = "Allow",
-      Action   = ["dynamodb:PutItem", "dynamodb:GetItem", "dynamodb:Query", "dynamodb:UpdateItem"],
+      Action   = ["dynamodb:PutItem", "dynamodb:GetItem", "dynamodb:Query", "dynamodb:UpdateItem", "dynamodb:DescribeTable"],
       Resource = concat([aws_dynamodb_table.trade_finance_registry.arn], local.registry_gsi_arns)
-    },
-    {
-      Sid    = "ApplicationSecretOnly", Effect = "Allow",
-      Action = ["secretsmanager:GetSecretValue"], Resource = [aws_secretsmanager_secret.application.arn]
     },
     {
       Sid    = "DataKeyOnly", Effect = "Allow",
@@ -329,7 +407,8 @@ resource "aws_dynamodb_resource_policy" "registry" {
 # CI deploy role. AWS requires Resource="*" for GetAuthorizationToken and
 # RegisterTaskDefinition; all resource-scoped operations below use exact ARNs.
 resource "aws_iam_role" "ci_deploy" {
-  name = "${local.name}-ci-deploy"
+  count = var.github_oidc_provider_arn == null ? 0 : 1
+  name  = "${local.name}-ci-deploy"
   assume_role_policy = jsonencode({ Version = "2012-10-17", Statement = [{
     Effect = "Allow", Principal = { Federated = var.github_oidc_provider_arn },
     Action = "sts:AssumeRoleWithWebIdentity",
@@ -339,7 +418,8 @@ resource "aws_iam_role" "ci_deploy" {
 }
 
 resource "aws_iam_role_policy" "ci_deploy" {
-  role = aws_iam_role.ci_deploy.id
+  count = var.github_oidc_provider_arn == null ? 0 : 1
+  role  = aws_iam_role.ci_deploy[0].id
   policy = jsonencode({ Version = "2012-10-17", Statement = [
     { Sid = "EcrAuthorization", Effect = "Allow", Action = ["ecr:GetAuthorizationToken"], Resource = ["*"] },
     {
@@ -376,7 +456,13 @@ resource "aws_ecr_repository" "web" {
   }
 }
 
-resource "aws_ecs_cluster" "main" { name = local.name }
+resource "aws_ecs_cluster" "main" {
+  name = local.name
+  setting {
+    name  = "containerInsights"
+    value = "enabled"
+  }
+}
 resource "aws_cloudwatch_log_group" "api" {
   name              = "/ecs/tradesentry/api"
   retention_in_days = 90
@@ -416,10 +502,14 @@ resource "aws_ecs_task_definition" "api" {
   memory                   = 512
   task_role_arn            = aws_iam_role.ecs_task.arn
   execution_role_arn       = aws_iam_role.ecs_execution.arn
-  container_definitions = jsonencode([{ name = "api", image = "${aws_ecr_repository.api.repository_url}:latest", essential = true,
+  container_definitions = jsonencode([{ name = "api", image = "${aws_ecr_repository.api.repository_url}:${var.image_tag}", essential = true,
     portMappings = [{ containerPort = 8000, protocol = "tcp" }],
     environment = [
       { name = "AWS_REGION", value = var.aws_region },
+      { name = "APP_VERSION", value = var.image_tag },
+      { name = "ENVIRONMENT", value = var.environment },
+      { name = "DEPLOYMENT", value = "AWS ECS · Textract · RDS · DynamoDB · ElastiCache · S3" },
+      { name = "INFRASTRUCTURE_NOTE", value = "Deployed on AWS using hackathon credits" },
       { name = "SERVICE_CHECK_MODE", value = "live" },
       { name = "OCR_MODE", value = "live" },
       { name = "S3_BUCKET", value = aws_s3_bucket.documents.id },
@@ -444,7 +534,7 @@ resource "aws_ecs_task_definition" "web" {
   cpu                      = 256
   memory                   = 512
   execution_role_arn       = aws_iam_role.ecs_execution.arn
-  container_definitions = jsonencode([{ name = "web", image = "${aws_ecr_repository.web.repository_url}:latest", essential = true,
+  container_definitions = jsonencode([{ name = "web", image = "${aws_ecr_repository.web.repository_url}:${var.image_tag}", essential = true,
     portMappings     = [{ containerPort = 3000, protocol = "tcp" }],
     logConfiguration = { logDriver = "awslogs", options = { "awslogs-group" = aws_cloudwatch_log_group.web.name, "awslogs-region" = var.aws_region, "awslogs-stream-prefix" = "ecs" } }
   }])
@@ -454,25 +544,100 @@ resource "aws_ecs_service" "api" {
   name            = "tradesentry-api"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.api.arn
-  desired_count   = 1
+  desired_count   = var.service_desired_count
   launch_type     = "FARGATE"
   network_configuration {
-    subnets          = var.private_subnet_ids
+    subnets          = local.subnet_ids
     security_groups  = [aws_security_group.ecs.id]
-    assign_public_ip = false
+    assign_public_ip = true
   }
+  load_balancer {
+    target_group_arn = aws_lb_target_group.api.arn
+    container_name   = "api"
+    container_port   = 8000
+  }
+  health_check_grace_period_seconds = 60
+  depends_on                        = [aws_lb_listener.http]
 }
 
 resource "aws_ecs_service" "web" {
   name            = "tradesentry-web"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.web.arn
-  desired_count   = 1
+  desired_count   = var.service_desired_count
   launch_type     = "FARGATE"
   network_configuration {
-    subnets          = var.private_subnet_ids
+    subnets          = local.subnet_ids
     security_groups  = [aws_security_group.ecs.id]
-    assign_public_ip = false
+    assign_public_ip = true
+  }
+  load_balancer {
+    target_group_arn = aws_lb_target_group.web.arn
+    container_name   = "web"
+    container_port   = 3000
+  }
+  health_check_grace_period_seconds = 60
+  depends_on                        = [aws_lb_listener.http]
+}
+
+resource "aws_lb" "demo" {
+  name                       = "${local.name}-demo"
+  internal                   = false
+  load_balancer_type         = "application"
+  security_groups            = [aws_security_group.alb.id]
+  subnets                    = local.subnet_ids
+  drop_invalid_header_fields = true
+}
+
+resource "aws_lb_target_group" "api" {
+  name        = "${local.name}-api"
+  port        = 8000
+  protocol    = "HTTP"
+  target_type = "ip"
+  vpc_id      = local.vpc_id
+  health_check {
+    path                = "/health"
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+    timeout             = 5
+    interval            = 15
+    matcher             = "200"
+  }
+}
+
+resource "aws_lb_target_group" "web" {
+  name        = "${local.name}-web"
+  port        = 3000
+  protocol    = "HTTP"
+  target_type = "ip"
+  vpc_id      = local.vpc_id
+  health_check {
+    path    = "/"
+    matcher = "200-399"
+  }
+}
+
+resource "aws_lb_listener" "http" {
+  load_balancer_arn = aws_lb.demo.arn
+  port              = 80
+  protocol          = "HTTP"
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.web.arn
+  }
+}
+
+resource "aws_lb_listener_rule" "api" {
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 10
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.api.arn
+  }
+  condition {
+    path_pattern {
+      values = ["/health", "/cases*", "/cross-ibu*", "/audit-events*", "/docs*", "/openapi.json"]
+    }
   }
 }
 

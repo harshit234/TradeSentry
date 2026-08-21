@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
@@ -13,8 +12,6 @@ from tradesentry_api.services import Services
 
 from agents.guardrails import UnknownComplianceRuleError, validate_compliance_rule_ids
 from agents.planner import APPROVED_AGENT_TOOLS, DeterministicTriagePlanner, TriagePlanner
-from cross_ibu import signal_from_dna
-from dna import build_transaction_dna
 from fraud_tbml.price_benchmark import PriceBenchmarkProvider
 from models.compliance import ComplianceFinding, Severity
 from models.cross_ibu import MatchLevel
@@ -29,6 +26,7 @@ from models.investigation import (
     TriageContext,
 )
 from scripts.seed_demo import CASES, seed_case
+from scripts.seed_registry import seed_cross_ibu_registry
 from tests.security_support import auth_headers, secure_settings
 
 _CACHE: tuple[Services, dict[str, InvestigationResponse]] | None = None
@@ -36,16 +34,9 @@ _CACHE: tuple[Services, dict[str, InvestigationResponse]] | None = None
 
 async def _seeded_services() -> Services:
     services = Services.build(Settings())
+    await seed_cross_ibu_registry(services)
     for label in CASES:
         await seed_case(services, label)
-    documents = await services.repository.list_documents("DEMO-CASE-A")
-    dna = build_transaction_dna(
-        "DEMO-CASE-A",
-        "IBU-A",
-        [item.extraction for item in documents if item.extraction is not None],
-        datetime.now(UTC),
-    )
-    await services.cross_ibu_registry.register(signal_from_dna(dna), datetime.now(UTC))
     return services
 
 
@@ -196,7 +187,7 @@ async def test_tool_timeout_returns_unavailable_and_investigation_continues() ->
     services.fraud_tbml_runner.retry_count = 0
     result = await InvestigationOrchestrator(
         services, DeterministicTriagePlanner(), tool_timeout_seconds=1
-    ).run("DEMO-CASE-C", "IBU-A")
+    ).run("DEMO-CASE-C", CASES["C"][1])
     assert result.state.price_benchmark is not None
     assert result.state.price_benchmark.signal is PriceSignal.DATA_UNAVAILABLE
     assert result.state.risk_score is not None
@@ -208,7 +199,7 @@ async def test_tool_call_record_and_audit_exist_for_every_tool_call() -> None:
     services = await _seeded_services()
     before = await services.audit_store.count("TOOL_CALLED")
     result = await InvestigationOrchestrator(services, DeterministicTriagePlanner()).run(
-        "DEMO-CASE-B", "IBU-B"
+        "DEMO-CASE-B", CASES["B"][1]
     )
     after = await services.audit_store.count("TOOL_CALLED")
     assert after - before >= len(result.state.tool_calls_made)

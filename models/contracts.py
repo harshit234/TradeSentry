@@ -15,9 +15,11 @@ class HealthResponse(BaseModel):
     redis: Literal["ok", "unavailable"]
     s3: Literal["ok", "unavailable"]
     textract: Literal["ok", "unavailable"]
+    dynamodb: Literal["ok", "unavailable"]
     version: str
     aws_region: str
     deployment: str
+    infrastructure_note: str
 
 
 class ProblemDetail(BaseModel):

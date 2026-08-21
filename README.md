@@ -2,9 +2,9 @@
 
 AWS-first, human-authorized pre-settlement intelligence prototype for simulated GIFT City IBU workflows.
 
-## Current scope: Sprint 6
+## Current scope: Sprint 10
 
-The foundation now includes document intelligence, deterministic compliance,
+The platform now includes document intelligence, deterministic compliance,
 Transaction DNA, simulated cross-IBU intelligence, four read-only Sprint 5
 fraud/TBML investigation tools: price benchmarking, vessel verification,
 entity verification, and sanctions screening, plus a constrained LangGraph
@@ -68,3 +68,9 @@ allow-list and no settlement is executed or simulated.
 Bedrock fallback is optional. Set `BEDROCK_MODEL_ID` and use an AWS profile locally or the ECS task role in AWS; never store a Bedrock credential in this repository.
 
 Run backend tests with `pytest` and the frontend checks with `npm --prefix apps/web run build`.
+
+Sprint 10 AWS deployment and presentation instructions are in
+[`docs/deployment.md`](docs/deployment.md) and
+[`docs/demo-runbook.md`](docs/demo-runbook.md). The repository never treats a
+Terraform plan as proof of a live deployment; use the staging health gate and
+CloudWatch/ECS checks before making live-infrastructure claims.

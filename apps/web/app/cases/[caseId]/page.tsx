@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { FormEvent, ReactNode, useCallback, useEffect, useState } from "react";
 import { CaseReport, getReport, submitReview, TOKEN_KEY } from "../../../lib/api";
+import { AwsBadge } from "../../aws-badge";
 
 const DECISIONS = ["APPROVE", "HOLD", "ESCALATE", "REQUEST_MORE_EVIDENCE"] as const;
 
@@ -58,7 +59,7 @@ export default function CaseReviewPage() {
   const timeline = records(sections.investigation_timeline);
 
   return <main className="caseReview">
-    <header className="caseTopbar"><Link href="/">← Case queue</Link><div><p className="eyebrow">Human review record</p><h1>{caseId}</h1></div><span className="secureState">JWT · IBU isolated</span></header>
+    <header className="caseTopbar"><Link href="/">← Case queue</Link><div><p className="eyebrow">Human review record</p><h1>{caseId}</h1></div><div className="headerActions"><AwsBadge /><span className="secureState">JWT · IBU isolated</span></div></header>
     {!report && !error && <div className="reportLoading"><i /><strong>Loading protected evidence…</strong></div>}
     {error && <p className="reportError" role="alert">{error}</p>}
     {report && <>

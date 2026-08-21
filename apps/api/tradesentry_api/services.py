@@ -204,3 +204,4 @@ class Services:
         await self.redis.close()
         await self.storage.close()
         await self.textract.close()
+        await self.cross_ibu_registry.close()

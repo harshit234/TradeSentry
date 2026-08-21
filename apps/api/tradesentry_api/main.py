@@ -132,9 +132,19 @@ def create_app(settings: Settings | None = None, services: Services | None = Non
         redis_status = await status(current.redis)
         s3_status = await status(current.storage)
         textract_status = await status(current.textract)
+        dynamodb_status = await status(current.cross_ibu_registry)
         overall: Literal["ok", "degraded"] = (
             "ok"
-            if all(value == "ok" for value in (db_status, redis_status, s3_status, textract_status))
+            if all(
+                value == "ok"
+                for value in (
+                    db_status,
+                    redis_status,
+                    s3_status,
+                    textract_status,
+                    dynamodb_status,
+                )
+            )
             else "degraded"
         )
         return HealthResponse(
@@ -143,9 +153,11 @@ def create_app(settings: Settings | None = None, services: Services | None = Non
             redis=redis_status,
             s3=s3_status,
             textract=textract_status,
+            dynamodb=dynamodb_status,
             version=app_settings.version,
             aws_region=app_settings.aws_region,
             deployment=app_settings.deployment,
+            infrastructure_note=app_settings.infrastructure_note,
         )
 
     install_exception_handlers(app)

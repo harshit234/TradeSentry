@@ -11,6 +11,7 @@ class Settings(BaseModel):
     version: str = "0.1.0"
     environment: str = "local"
     deployment: str = "local-compose"
+    infrastructure_note: str = "Local development environment"
     aws_region: str = "ap-south-1"
     database_url: str = "postgresql+asyncpg://tradesentry:change-me@localhost:5432/tradesentry"
     redis_url: str = "redis://localhost:6379/0"
@@ -49,6 +50,9 @@ class Settings(BaseModel):
             version=os.getenv("APP_VERSION", "0.1.0"),
             environment=os.getenv("ENVIRONMENT", "local"),
             deployment=os.getenv("DEPLOYMENT", "local-compose"),
+            infrastructure_note=os.getenv(
+                "INFRASTRUCTURE_NOTE", "Local development environment"
+            ),
             aws_region=os.getenv("AWS_REGION", "ap-south-1"),
             database_url=os.getenv(
                 "DATABASE_URL",
@@ -56,7 +60,7 @@ class Settings(BaseModel):
             ),
             redis_url=os.getenv("REDIS_URL", "redis://localhost:6379/0"),
             s3_bucket=os.getenv("S3_BUCKET", "tradesentry-documents-local"),
-            s3_endpoint_url=os.getenv("S3_ENDPOINT_URL", "http://localhost:4566"),
+            s3_endpoint_url=os.getenv("S3_ENDPOINT_URL") or None,
             s3_public_endpoint_url=os.getenv("S3_PUBLIC_ENDPOINT_URL"),
             textract_endpoint_url=os.getenv("TEXTRACT_ENDPOINT_URL"),
             dynamodb_endpoint_url=os.getenv("DYNAMODB_ENDPOINT_URL"),

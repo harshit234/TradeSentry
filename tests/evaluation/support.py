@@ -12,8 +12,6 @@ from tradesentry_api.investigation_orchestrator import InvestigationOrchestrator
 from tradesentry_api.services import Services
 
 from agents.planner import DeterministicTriagePlanner
-from cross_ibu import signal_from_dna
-from dna import build_transaction_dna
 from models.compliance import ComplianceCaseFacts, LCRequirements, PresentedDocument
 from models.contracts import (
     BillOfLadingFields,
@@ -30,6 +28,7 @@ from models.contracts import (
 from models.dna import TransactionDNA
 from models.investigation import InvestigationResponse
 from scripts.seed_demo import CASES, seed_case
+from scripts.seed_registry import seed_cross_ibu_registry
 
 ROOT = Path(__file__).resolve().parents[2]
 NOW = datetime(2024, 9, 8, 12, tzinfo=UTC)
@@ -185,16 +184,9 @@ async def demo_results() -> tuple[Services, dict[str, InvestigationResponse]]:
     global _DEMO_CACHE
     if _DEMO_CACHE is None:
         services = Services.build(Settings())
+        await seed_cross_ibu_registry(services)
         for label in CASES:
             await seed_case(services, label)
-        documents = await services.repository.list_documents("DEMO-CASE-A")
-        case_a_dna = build_transaction_dna(
-            "DEMO-CASE-A",
-            "IBU-A",
-            [item.extraction for item in documents if item.extraction is not None],
-            datetime.now(UTC),
-        )
-        await services.cross_ibu_registry.register(signal_from_dna(case_a_dna), datetime.now(UTC))
         results: dict[str, InvestigationResponse] = {}
         for label, (case_id, ibu_id, _folder) in CASES.items():
             results[label] = await InvestigationOrchestrator(

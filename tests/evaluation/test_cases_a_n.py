@@ -50,7 +50,7 @@ from models.investigation import (
 )
 from rules.checks import ART14C, ART14D
 from rules.engine import evaluate_compliance
-from scripts.seed_demo import seed_case
+from scripts.seed_demo import CASES, seed_case
 
 from .support import NOW, base_facts, demo_results, dna, evaluation_contract, extraction
 
@@ -268,7 +268,7 @@ async def test_case_k_tool_timeout() -> None:
     services.fraud_tbml_runner.retry_count = 0
     result = await InvestigationOrchestrator(
         services, DeterministicTriagePlanner(), tool_timeout_seconds=1
-    ).run("DEMO-CASE-C", "IBU-A")
+    ).run("DEMO-CASE-C", CASES["C"][1])
     assert result.state.price_benchmark and result.state.price_benchmark.signal is PriceSignal.DATA_UNAVAILABLE
     assert any(item.node_name == "risk_assessment" for item in result.state.timeline)
     assert any("timeout" in caveat.lower() for caveat in result.state.price_benchmark.caveats)

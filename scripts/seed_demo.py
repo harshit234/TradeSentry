@@ -18,48 +18,48 @@ from tradesentry_api.documents import (
     detect_mime,
     deterministic_document_id,
 )
+from tradesentry_api.investigation_orchestrator import InvestigationOrchestrator
 from tradesentry_api.processor import SCHEMA_BY_TYPE
 from tradesentry_api.services import Services
 
+from agents.planner import DeterministicTriagePlanner
 from models.contracts import DocumentStatus, DocumentType, ExtractionResult, FieldConfidence
+from scripts.seed_registry import seed_cross_ibu_registry
 
 ROOT = Path(__file__).resolve().parents[1]
 CASES = {
     "A": ("DEMO-CASE-A", "IBU-A", "case_a_clean"),
-    "B": ("DEMO-CASE-B", "IBU-B", "case_b_duplicate"),
-    "C": ("DEMO-CASE-C", "IBU-A", "case_c_tbml"),
-    "D": ("DEMO-CASE-D", "IBU-C", "case_d_legit"),
+    "B": ("DEMO-CASE-B", "IBU-A", "case_b_duplicate"),
+    "C": ("DEMO-CASE-C", "IBU-B", "case_c_tbml"),
+    "D": ("DEMO-CASE-D", "IBU-A", "case_d_legit"),
 }
-
-
-async def register_cross_ibu_records(services: Services) -> None:
-    if not isinstance(services.db, Database):
-        return
-    records = [
-        "BL100001",
-        "BL100002",
-        "BL100003",
-        "BL789456",
-        "BL100005",
-        "BL100006",
-        "BL100007",
-        "BL100008",
-    ]
-    async with services.db.engine.begin() as connection:
-        for fingerprint in records:
-            await connection.execute(
-                text(
-                    "INSERT INTO document_registry (document_fingerprint, ibu_id, document_type) "
-                    "VALUES (:fingerprint, 'IBU-C', 'bill_of_lading') "
-                    "ON CONFLICT (document_fingerprint) DO UPDATE SET ibu_id='IBU-C'"
-                ),
-                {"fingerprint": fingerprint},
-            )
 
 
 def load_fixture(case_id: str) -> dict[str, Any]:
     path = ROOT / "fixtures" / "pre_extracted" / f"{case_id}.json"
-    return dict(json.loads(path.read_text(encoding="utf-8")))
+    fixture = dict(json.loads(path.read_text(encoding="utf-8")))
+    if case_id == "DEMO-CASE-A":
+        by_type = {item["document_type"]: item for item in fixture["documents"]}
+        bill = by_type["bill_of_lading"]
+        bill["fields"]["bl_number"]["value"] = "BL-CLEAN-2024-042"
+        bill["fields"]["vessel_name"]["value"] = "CLEAN HORIZON"
+        bill["fields"]["voyage_number"]["value"] = "V042"
+        bill["fields"]["shipper"]["value"] = "Clean Exporters Ltd"
+        bill["fields"]["on_board_date"]["value"] = "2024-07-15"
+        bill["fields"]["loading_port"]["value"] = "Nhava Sheva, India"
+        bill["fields"]["discharge_port"]["value"] = "Dubai, UAE"
+        by_type["commercial_invoice"]["fields"]["seller"]["value"] = (
+            "Clean Exporters Ltd"
+        )
+        by_type["letter_of_credit"]["fields"]["beneficiary"]["value"] = (
+            "Clean Exporters Ltd"
+        )
+    if case_id == "DEMO-CASE-C":
+        lc = next(
+            item for item in fixture["documents"] if item["document_type"] == "letter_of_credit"
+        )
+        lc["fields"]["credit_amount"]["value"] = 405000.00
+    return fixture
 
 
 def extraction_from_fixture(document_id: str, fixture: dict[str, Any]) -> ExtractionResult:
@@ -92,7 +92,29 @@ async def seed_case(services: Services, label: str) -> None:
     existing = await services.repository.list_documents(case_id)
     for document in existing:
         await services.storage.delete(document.s3_key)
-    if await services.repository.get_case(case_id) is None:
+    if isinstance(services.db, Database):
+        async with services.db.engine.begin() as connection:
+            for statement in (
+                "DELETE FROM officer_decisions WHERE case_id=:case_id",
+                "DELETE FROM investigation_states WHERE case_id=:case_id",
+                "DELETE FROM transaction_dna WHERE case_id=:case_id",
+                "DELETE FROM compliance_results WHERE case_id=:case_id",
+            ):
+                await connection.execute(
+                    text(statement),
+                    {"case_id": case_id},
+                )
+            await connection.execute(
+                text(
+                    "UPDATE cases SET ibu_id=:ibu_id, status='PENDING', updated_at=now() "
+                    "WHERE id=:case_id"
+                ),
+                {"case_id": case_id, "ibu_id": ibu_id},
+            )
+        if await services.repository.get_case(case_id) is None:
+            await services.repository.create_case(CaseRecord(id=case_id, ibu_id=ibu_id))
+    else:
+        await services.repository.delete_case(case_id)
         await services.repository.create_case(CaseRecord(id=case_id, ibu_id=ibu_id))
     fixture = load_fixture(case_id)
     fixture_by_name = {item["filename"]: item for item in fixture["documents"]}
@@ -131,22 +153,31 @@ async def main(case: str | None) -> None:
     started = monotonic()
     services = Services.build(Settings.from_env())
     try:
-        await register_cross_ibu_records(services)
+        await seed_cross_ibu_registry(services)
         labels = [case] if case else list(CASES)
         for label in labels:
             await seed_case(services, label)
+        for label in labels:
+            case_id, ibu_id, _folder = CASES[label]
+            result = await InvestigationOrchestrator(
+                services, DeterministicTriagePlanner()
+            ).run(case_id, ibu_id)
+            await services.repository.update_case_status(
+                case_id, result.state.recommended_action or "PENDING REVIEW"
+            )
         count = 0
         for label in labels:
             count += len(await services.repository.list_documents(CASES[label][0]))
         print(
-            f"Seeded {len(labels)} demo cases and {count} documents in {monotonic() - started:.2f}s"
+            f"Seeded and evaluated {len(labels)} demo cases and {count} documents "
+            f"in {monotonic() - started:.2f}s"
         )
     finally:
         await services.close()
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Idempotently seed Sprint 1 demo documents")
+    parser = argparse.ArgumentParser(description="Idempotently reset Sprint 10 demo scenarios")
     parser.add_argument("--case", choices=CASES)
     arguments = parser.parse_args()
     asyncio.run(main(arguments.case))

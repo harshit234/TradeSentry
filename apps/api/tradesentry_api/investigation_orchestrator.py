@@ -315,7 +315,12 @@ class InvestigationOrchestrator:
             "tool_calls_made": [*state.tool_calls_made, record],
             "tool_budget_remaining": remaining,
             "errors": errors,
-            "timeline": _timeline(state, "cross_ibu_check", result.match_level.value, result.explanation),
+            "timeline": _timeline(
+                state,
+                "cross_ibu_check",
+                result.match_level.value,
+                f"DynamoDB GSI query · {record.duration_ms:.3f}ms · {result.explanation}",
+            ),
         }
 
     async def fraud_triage(self, state: InvestigationState) -> dict[str, Any]:

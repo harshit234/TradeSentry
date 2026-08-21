@@ -12,6 +12,8 @@ from models.cross_ibu import RegistryRegistration, RegistrySignal
 
 
 class CrossIBURegistry(Protocol):
+    async def check(self) -> bool: ...
+    async def close(self) -> None: ...
     async def register(
         self, signal: RegistrySignal, registered_at: datetime
     ) -> RegistryRegistration: ...
@@ -22,6 +24,12 @@ class CrossIBURegistry(Protocol):
 class InMemoryCrossIBURegistry:
     def __init__(self) -> None:
         self.items: dict[tuple[str, str], RegistryRegistration] = {}
+
+    async def check(self) -> bool:
+        return True
+
+    async def close(self) -> None:
+        return None
 
     async def register(
         self, signal: RegistrySignal, registered_at: datetime
@@ -61,6 +69,13 @@ class DynamoDBCrossIBURegistry:
     def __init__(self, table_name: str, region: str, endpoint_url: str | None) -> None:
         resource = boto3.resource("dynamodb", region_name=region, endpoint_url=endpoint_url)
         self.table: Any = resource.Table(table_name)
+
+    async def check(self) -> bool:
+        self.table.load()
+        return bool(self.table.table_status == "ACTIVE")
+
+    async def close(self) -> None:
+        return None
 
     @staticmethod
     def _item(registration: RegistryRegistration) -> dict[str, Any]:
