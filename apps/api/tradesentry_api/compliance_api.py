@@ -45,7 +45,7 @@ def _fields(document: DocumentRecord | None, expected: type[object]) -> object |
     return fields if isinstance(fields, expected) else None
 
 
-async def _facts(
+async def build_compliance_facts(
     services: Services, case_id: str, payload: ComplianceRunRequest
 ) -> ComplianceCaseFacts:
     case = await services.repository.get_case(case_id)
@@ -103,7 +103,7 @@ async def run_compliance(
     case_id: str, request: Request, payload: ComplianceRunRequest | None = None
 ) -> ComplianceResult:
     services = _services(request)
-    facts = await _facts(services, case_id, payload or ComplianceRunRequest())
+    facts = await build_compliance_facts(services, case_id, payload or ComplianceRunRequest())
     result = evaluate_compliance(facts)
     await services.compliance_store.save(result)
     return result

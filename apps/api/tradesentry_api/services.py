@@ -30,6 +30,11 @@ from .dna_store import (
     TransactionDNAStore,
 )
 from .fraud_tbml_runner import FraudTBMLToolRunner
+from .investigation_store import (
+    InMemoryInvestigationStore,
+    InvestigationStore,
+    PostgresInvestigationStore,
+)
 from .ocr import (
     BedrockLLMFallback,
     LLMFallback,
@@ -97,6 +102,7 @@ class Services:
     cross_ibu_registry: CrossIBURegistry
     audit_store: AuditStore
     fraud_tbml_runner: FraudTBMLToolRunner
+    investigation_store: InvestigationStore
 
     @classmethod
     def build(cls, settings: Settings) -> "Services":
@@ -125,6 +131,7 @@ class Services:
                 settings.dynamodb_endpoint_url,
             )
             audit_store: AuditStore = PostgresAuditStore(database)
+            investigation_store: InvestigationStore = PostgresInvestigationStore(database)
         else:
             database = InMemoryDatabase()
             storage = InMemoryStorage()
@@ -135,6 +142,7 @@ class Services:
             dna_store = InMemoryTransactionDNAStore()
             cross_ibu_registry = InMemoryCrossIBURegistry()
             audit_store = InMemoryAuditStore()
+            investigation_store = InMemoryInvestigationStore()
         ocr: OCRProvider = (
             TextractOCRProvider(
                 settings.aws_region,
@@ -173,6 +181,7 @@ class Services:
             cross_ibu_registry,
             audit_store,
             fraud_tbml_runner,
+            investigation_store,
         )
 
     async def close(self) -> None:

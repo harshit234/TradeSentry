@@ -1,7 +1,7 @@
 import os
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class Settings(BaseModel):
@@ -28,6 +28,9 @@ class Settings(BaseModel):
     textract_timeout_seconds: int = 120
     fraud_tool_timeout_seconds: float = 30.0
     fraud_tool_retry_count: int = 1
+    investigation_tool_timeout_seconds: float = Field(default=30.0, gt=0)
+    investigation_tool_budget: int = Field(default=12, ge=0, le=12)
+    price_triage_threshold_usd: float = Field(default=700.0, gt=0)
     bedrock_model_id: str | None = None
     log_level: str = "INFO"
 
@@ -58,6 +61,13 @@ class Settings(BaseModel):
             textract_timeout_seconds=int(os.getenv("TEXTRACT_TIMEOUT_SECONDS", "120")),
             fraud_tool_timeout_seconds=float(os.getenv("FRAUD_TOOL_TIMEOUT_SECONDS", "30")),
             fraud_tool_retry_count=int(os.getenv("FRAUD_TOOL_RETRY_COUNT", "1")),
+            investigation_tool_timeout_seconds=float(
+                os.getenv("INVESTIGATION_TOOL_TIMEOUT_SECONDS", "30")
+            ),
+            investigation_tool_budget=int(os.getenv("INVESTIGATION_TOOL_BUDGET", "12")),
+            price_triage_threshold_usd=float(
+                os.getenv("PRICE_TRIAGE_THRESHOLD_USD", "700")
+            ),
             bedrock_model_id=os.getenv("BEDROCK_MODEL_ID"),
             log_level=os.getenv("LOG_LEVEL", "INFO"),
         )

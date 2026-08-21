@@ -92,8 +92,8 @@ async def seed_case(services: Services, label: str) -> None:
     existing = await services.repository.list_documents(case_id)
     for document in existing:
         await services.storage.delete(document.s3_key)
-    await services.repository.delete_case(case_id)
-    await services.repository.create_case(CaseRecord(id=case_id, ibu_id=ibu_id))
+    if await services.repository.get_case(case_id) is None:
+        await services.repository.create_case(CaseRecord(id=case_id, ibu_id=ibu_id))
     fixture = load_fixture(case_id)
     fixture_by_name = {item["filename"]: item for item in fixture["documents"]}
     source = ROOT / "fixtures" / "sample_documents" / folder

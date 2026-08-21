@@ -2,19 +2,22 @@
 
 AWS-first, human-authorized pre-settlement intelligence prototype for simulated GIFT City IBU workflows.
 
-## Current scope: Sprint 5
+## Current scope: Sprint 6
 
 The foundation now includes document intelligence, deterministic compliance,
-Transaction DNA, simulated cross-IBU intelligence, and four read-only Sprint 5
+Transaction DNA, simulated cross-IBU intelligence, four read-only Sprint 5
 fraud/TBML investigation tools: price benchmarking, vessel verification,
-entity verification, and sanctions screening.
+entity verification, and sanctions screening, plus a constrained LangGraph
+investigation workflow.
 
 The tool runner enforces configurable timeouts, retries only idempotent reads,
 returns typed results with provenance and caveats, and appends audit events for
 every invocation. Its bundled data is synthetic/static demo data. Signals are
 not proof of fraud, fuzzy sanctions matches are never auto-confirmed, and a
-human officer remains the final authority. Agent orchestration, fraud decisions,
-and settlement actions remain intentionally absent until their own sprints.
+human officer remains the final authority. The workflow uses deterministic
+compliance and risk services, a structured triage plan, a 12-call default
+budget, hashed tool telemetry, and mandatory human-review interrupts. It does
+not make fraud findings or settlement decisions.
 
 ## Local development
 
@@ -43,6 +46,8 @@ Document endpoints:
 - `GET /cases/{case_id}/compliance`
 - `POST /cases/{case_id}/transaction-dna`
 - `GET /cases/{case_id}/transaction-dna`
+- `POST /cases/{case_id}/run` (`X-IBU-ID` required)
+- `GET /cases/{case_id}/investigation` (`X-IBU-ID` required)
 - `POST /cross-ibu/register` (`X-IBU-ID` required)
 - `POST /cross-ibu/query` (`X-IBU-ID` required)
 - `GET /cross-ibu/registry` (`X-Admin-Debug: true`, simulated admin/debug only)
@@ -54,6 +59,11 @@ All cross-IBU weights and thresholds are configurable prototype demo values, not
 Sprint 5 tool thresholds are also prototype demo values, not regulatory
 standards. Production provider classes are non-operational stubs; the MVP makes
 no live price, AIS, entity-intelligence, or sanctions API calls at runtime.
+
+All risk weights and the USD 700 triage threshold are prototype demo values,
+not calibrated production or regulatory standards. A `READY FOR BANK SETTLEMENT
+WORKFLOW` result is informational only: no settlement tool exists in the agent
+allow-list and no settlement is executed or simulated.
 
 Bedrock fallback is optional. Set `BEDROCK_MODEL_ID` and use an AWS profile locally or the ECS task role in AWS; never store a Bedrock credential in this repository.
 

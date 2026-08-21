@@ -14,6 +14,7 @@ from .config import Settings
 from .cross_ibu_api import router as cross_ibu_router
 from .dna_api import router as dna_router
 from .errors import install_exception_handlers
+from .investigation_api import router as investigation_router
 from .logging import configure_logging, correlation_id_var
 from .services import Checkable, Services
 
@@ -90,6 +91,7 @@ def create_app(settings: Settings | None = None, services: Services | None = Non
     app.include_router(compliance_router)
     app.include_router(dna_router)
     app.include_router(cross_ibu_router)
+    app.include_router(investigation_router)
     return app
 
 
