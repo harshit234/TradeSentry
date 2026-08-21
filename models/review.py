@@ -40,6 +40,7 @@ class OfficerDecision(BaseModel):
     comment: str
     officer_id: str
     officer_role: str
+    idempotency_key_hash: str = Field(exclude=True)
     created_at: datetime
 
 

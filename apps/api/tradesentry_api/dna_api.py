@@ -9,6 +9,8 @@ from dna import build_transaction_dna
 from models.contracts import ExtractionResult
 from models.dna import TransactionDNA
 
+from .audit_store import AuditEventType, event_from_request
+from .auth import ADMIN, request_principal, require_roles
 from .services import Services
 
 router = APIRouter(prefix="/cases", tags=["transaction-dna"])
@@ -21,9 +23,13 @@ def _services(request: Request) -> Services:
 @router.post("/{case_id}/transaction-dna", response_model=TransactionDNA)
 async def create_transaction_dna(case_id: str, request: Request) -> TransactionDNA:
     services = _services(request)
+    principal = request_principal(request)
+    require_roles(principal, ADMIN)
     case = await services.repository.get_case(case_id)
     if case is None:
         raise HTTPException(status_code=404, detail="Case not found")
+    if case.ibu_id != principal.ibu_id:
+        raise HTTPException(status_code=403, detail="IBU tenant access denied")
     documents = await services.repository.list_documents(case_id)
     extractions: list[ExtractionResult] = [
         document.extraction for document in documents if document.extraction is not None
@@ -32,12 +38,27 @@ async def create_transaction_dna(case_id: str, request: Request) -> TransactionD
         raise HTTPException(status_code=422, detail="Extracted document fields are required")
     result = build_transaction_dna(case_id, case.ibu_id, extractions, datetime.now(UTC))
     await services.dna_store.save(result)
+    await services.audit_store.record(
+        event_from_request(
+            request,
+            event_type=AuditEventType.TRANSACTION_DNA_BUILT,
+            case_id=case_id,
+            payload_ref=f"dna://{result.transaction_id}",
+        )
+    )
     return result
 
 
 @router.get("/{case_id}/transaction-dna", response_model=TransactionDNA)
 async def get_transaction_dna(case_id: str, request: Request) -> TransactionDNA:
-    result = await _services(request).dna_store.get(case_id)
+    services = _services(request)
+    principal = request_principal(request)
+    case = await services.repository.get_case(case_id)
+    if case is None:
+        raise HTTPException(status_code=404, detail="Case not found")
+    if case.ibu_id != principal.ibu_id:
+        raise HTTPException(status_code=403, detail="IBU tenant access denied")
+    result = await services.dna_store.get(case_id)
     if result is None:
         raise HTTPException(status_code=404, detail="Transaction DNA not found")
     return result

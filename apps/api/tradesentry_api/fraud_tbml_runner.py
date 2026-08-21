@@ -26,7 +26,7 @@ from models.fraud_tbml import (
     VesselVerificationResult,
 )
 
-from .audit_store import AuditEvent, AuditStore
+from .audit_store import AuditEvent, AuditEventType, AuditStore
 
 T = TypeVar("T")
 PORT_COUNTRIES = {
@@ -68,9 +68,14 @@ class FraudTBMLToolRunner:
         await self.audit_store.record(
             AuditEvent(
                 case_id=dna.case_id,
+                ibu_id=dna.presenting_ibu,
                 actor_id="fraud-tbml-tool-runner",
-                event_type=f"FRAUD_TBML_TOOL_{phase}",
-                payload_ref=f"tool={tool};status={status};dna={dna.dna_fingerprint[:12]}",
+                actor_role="AGENT",
+                event_type=AuditEventType.TOOL_CALLED,
+                payload_ref=(
+                    f"tool://{tool}/{phase.lower()}/{status}/"
+                    f"dna-sha256-{dna.dna_fingerprint[:12]}"
+                ),
                 created_at=datetime.now(UTC),
             )
         )

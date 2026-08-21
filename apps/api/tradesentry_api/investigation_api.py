@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from typing import Annotated, cast
+from typing import cast
 
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request
 
 from agents.planner import BedrockTriagePlanner, DeterministicTriagePlanner, TriagePlanner
 from models.investigation import InvestigationResponse, InvestigationRunRequest
 
+from .auth import ADMIN, request_principal, require_roles
 from .investigation_orchestrator import InvestigationOrchestrator
 from .services import Services
 
@@ -29,11 +30,12 @@ async def _authorize(services: Services, case_id: str, ibu_id: str) -> None:
 async def run_investigation(
     case_id: str,
     request: Request,
-    ibu_id: Annotated[str, Header(alias="X-IBU-ID")],
     payload: InvestigationRunRequest | None = None,
 ) -> InvestigationResponse:
     services = _services(request)
-    await _authorize(services, case_id, ibu_id)
+    principal = request_principal(request)
+    require_roles(principal, ADMIN)
+    await _authorize(services, case_id, principal.ibu_id)
     planner: TriagePlanner = (
         BedrockTriagePlanner(services.settings.aws_region, services.settings.bedrock_model_id)
         if services.settings.bedrock_model_id
@@ -47,7 +49,7 @@ async def run_investigation(
     )
     return await orchestrator.run(
         case_id,
-        ibu_id,
+        principal.ibu_id,
         tool_budget=None if payload is None else payload.tool_budget,
     )
 
@@ -56,10 +58,10 @@ async def run_investigation(
 async def get_investigation(
     case_id: str,
     request: Request,
-    ibu_id: Annotated[str, Header(alias="X-IBU-ID")],
 ) -> InvestigationResponse:
     services = _services(request)
-    await _authorize(services, case_id, ibu_id)
+    principal = request_principal(request)
+    await _authorize(services, case_id, principal.ibu_id)
     result = await services.investigation_store.get(case_id)
     if result is None:
         raise HTTPException(status_code=404, detail="Investigation not found")

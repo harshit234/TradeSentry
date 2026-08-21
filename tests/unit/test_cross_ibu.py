@@ -18,6 +18,7 @@ from tradesentry_api.services import Services
 from cross_ibu import find_best_match, signal_from_dna
 from models.cross_ibu import MatchLevel
 from models.dna import TransactionDNA
+from tests.security_support import auth_headers, secure_settings
 
 NOW = datetime(2026, 8, 21, 12, 0, tzinfo=UTC)
 
@@ -69,12 +70,13 @@ def _services_with(*items: TransactionDNA) -> Services:
 
 
 def _post(client: TestClient, path: str, case_id: str, ibu_id: str = "IBU-A"):
-    return client.post(path, json={"case_id": case_id}, headers={"X-IBU-ID": ibu_id})
+    role = "ADMIN" if path.endswith("/register") else "COMPLIANCE_MANAGER"
+    return client.post(path, json={"case_id": case_id}, headers=auth_headers(role, ibu_id))
 
 
 def test_t1_register_then_query_exact_match() -> None:
     services = _services_with(_dna("CASE-REGISTERED", "IBU-C"), _dna("CASE-QUERY", "IBU-A"))
-    with TestClient(create_app(Settings(), services)) as client:
+    with TestClient(create_app(secure_settings(), services)) as client:
         registered = _post(client, "/cross-ibu/register", "CASE-REGISTERED", "IBU-C")
         matched = _post(client, "/cross-ibu/query", "CASE-QUERY", "IBU-A")
     assert registered.status_code == 200
@@ -153,16 +155,16 @@ def test_t6_missing_bl_uses_level_two_without_crashing() -> None:
 
 def test_t7_tenant_cannot_query_foreign_case() -> None:
     services = _services_with(_dna("FOREIGN", "IBU-B"))
-    with TestClient(create_app(Settings(), services)) as client:
+    with TestClient(create_app(secure_settings(), services)) as client:
         response = _post(client, "/cross-ibu/query", "FOREIGN", "IBU-A")
     assert response.status_code == 403
     assert response.json()["detail"] == "IBU tenant access denied"
-    assert asyncio.run(services.audit_store.count("CROSS_IBU_QUERY_DENIED")) == 1
+    assert asyncio.run(services.audit_store.count("AUTH_FAILURE")) == 1
 
 
 def test_t8_every_query_is_audited() -> None:
     services = _services_with(_dna("AUDITED"))
-    with TestClient(create_app(Settings(), services)) as client:
+    with TestClient(create_app(secure_settings(), services)) as client:
         _post(client, "/cross-ibu/query", "AUDITED")
     assert asyncio.run(services.audit_store.count("CROSS_IBU_QUERIED")) == 1
 

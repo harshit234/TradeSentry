@@ -2,44 +2,24 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Iterator
-from datetime import UTC, datetime, timedelta
 
-import jwt
 import pytest
 from fastapi.testclient import TestClient
-from tradesentry_api.config import Settings
 from tradesentry_api.documents import CaseRecord, DocumentRecord
 from tradesentry_api.main import create_app
 from tradesentry_api.services import Services
 
 from models.contracts import DocumentStatus, DocumentType
 from models.investigation import InvestigationResponse, InvestigationState, RiskBand
-
-SECRET = "sprint-7-test-secret-at-least-32-bytes"
+from tests.security_support import auth_headers, secure_settings
 
 
 @pytest.fixture
 def dashboard() -> Iterator[tuple[TestClient, Services]]:
-    settings = Settings(jwt_secret=SECRET)
+    settings = secure_settings()
     services = Services.build(settings)
     with TestClient(create_app(settings, services)) as client:
         yield client, services
-
-
-def token(role: str = "OFFICER", ibu_id: str = "IBU-A") -> str:
-    encoded = jwt.encode(
-        {
-            "sub": "officer-001",
-            "role": role,
-            "ibu_id": ibu_id,
-            "iss": "tradesentry",
-            "aud": "tradesentry-dashboard",
-            "exp": datetime.now(UTC) + timedelta(hours=1),
-        },
-        SECRET,
-        algorithm="HS256",
-    )
-    return f"Bearer {encoded}"
 
 
 def add_case(services: Services, case_id: str, ibu_id: str = "IBU-A") -> None:
@@ -62,7 +42,13 @@ def add_investigation(services: Services, case_id: str, band: RiskBand) -> None:
 
 
 def auth_header(role: str = "OFFICER", ibu_id: str = "IBU-A") -> dict[str, str]:
-    return {"Authorization": token(role, ibu_id)}
+    return auth_headers(role, ibu_id)
+
+
+def review_header(
+    role: str = "OFFICER", key: str = "sprint-7-idempotency-key"
+) -> dict[str, str]:
+    return {**auth_header(role), "Idempotency-Key": key}
 
 
 def test_unauthenticated_dashboard_request_returns_401(
@@ -83,7 +69,7 @@ def test_empty_review_comment_returns_422(dashboard: tuple[TestClient, Services]
     add_case(services, "CASE-EMPTY")
     response = client.post(
         "/cases/CASE-EMPTY/review",
-        headers=auth_header(),
+        headers=review_header(),
         json={"decision": "APPROVE", "comment": "   "},
     )
     assert response.status_code == 422
@@ -96,7 +82,7 @@ def test_officer_approval_makes_case_settlement_ready(
     add_case(services, "CASE-APPROVE")
     reviewed = client.post(
         "/cases/CASE-APPROVE/review",
-        headers=auth_header(),
+        headers=review_header(),
         json={"decision": "APPROVE", "comment": "Evidence reviewed and acceptable."},
     )
     readiness = client.get(
@@ -114,7 +100,7 @@ def test_officer_hold_records_status_and_reason(
     add_case(services, "CASE-HOLD")
     response = client.post(
         "/cases/CASE-HOLD/review",
-        headers=auth_header(),
+        headers=review_header(),
         json={"decision": "HOLD", "comment": "Invoice evidence needs clarification."},
     )
     readiness = client.get("/cases/CASE-HOLD/settlement-readiness", headers=auth_header())
@@ -128,7 +114,7 @@ def test_agent_identity_cannot_submit_review(dashboard: tuple[TestClient, Servic
     add_case(services, "CASE-AGENT")
     response = client.post(
         "/cases/CASE-AGENT/review",
-        headers=auth_header("AGENT"),
+        headers=review_header("AGENT"),
         json={"decision": "APPROVE", "comment": "Agent must not make this decision."},
     )
     assert response.status_code == 403
@@ -182,13 +168,13 @@ def test_each_officer_decision_creates_an_audit_event(
 ) -> None:
     client, services = dashboard
     add_case(services, "CASE-AUDIT")
-    before = asyncio.run(services.audit_store.count("OFFICER_REVIEW_DECISION"))
+    before = asyncio.run(services.audit_store.count("OFFICER_DECISION"))
     for decision in ("HOLD", "REQUEST_MORE_EVIDENCE"):
         response = client.post(
             "/cases/CASE-AUDIT/review",
-            headers=auth_header(),
+            headers=review_header(key=f"audit-idempotency-{decision.lower()}"),
             json={"decision": decision, "comment": "Recorded evidence-based officer rationale."},
         )
         assert response.status_code == 201
-    after = asyncio.run(services.audit_store.count("OFFICER_REVIEW_DECISION"))
+    after = asyncio.run(services.audit_store.count("OFFICER_DECISION"))
     assert after - before == 2

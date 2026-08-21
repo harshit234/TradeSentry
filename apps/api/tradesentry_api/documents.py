@@ -4,7 +4,11 @@ import hashlib
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from io import BytesIO
 from pathlib import PurePath
+
+from pypdf import PdfReader
+from pypdf.errors import PdfReadError
 
 from models.contracts import DocumentStatus, DocumentType, ExtractionResult
 
@@ -33,7 +37,15 @@ def validate_upload(data: bytes, maximum_bytes: int) -> str:
         raise DocumentValidationError("Document exceeds the configured 50 MB limit", 413)
     if not data:
         raise DocumentValidationError("Document is empty", 415)
-    return detect_mime(data)
+    mime_type = detect_mime(data)
+    if mime_type == "application/pdf":
+        try:
+            reader = PdfReader(BytesIO(data), strict=True)
+            if not reader.pages:
+                raise DocumentValidationError("PDF contains no pages", 415)
+        except (PdfReadError, ValueError, OSError) as exc:
+            raise DocumentValidationError("PDF structure is invalid", 415) from exc
+    return mime_type
 
 
 def sanitize_filename(filename: str | None, mime_type: str) -> str:

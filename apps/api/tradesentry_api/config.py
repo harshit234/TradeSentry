@@ -32,9 +32,14 @@ class Settings(BaseModel):
     investigation_tool_budget: int = Field(default=12, ge=0, le=12)
     price_triage_threshold_usd: float = Field(default=700.0, gt=0)
     bedrock_model_id: str | None = None
-    jwt_secret: str = "local-demo-only-change-me-32-bytes!"
+    jwt_public_key: str | None = None
     jwt_issuer: str = "tradesentry"
     jwt_audience: str = "tradesentry-dashboard"
+    jwt_access_ttl_seconds: int = Field(default=3600, ge=60, le=3600)
+    jwt_refresh_ttl_seconds: int = Field(default=86400, ge=3600, le=86400)
+    rate_limit_ip_per_minute: int = Field(default=100, ge=1)
+    rate_limit_user_per_minute: int = Field(default=200, ge=1)
+    rate_limit_upload_per_minute: int = Field(default=10, ge=1)
     log_level: str = "INFO"
 
     @classmethod
@@ -72,8 +77,17 @@ class Settings(BaseModel):
                 os.getenv("PRICE_TRIAGE_THRESHOLD_USD", "700")
             ),
             bedrock_model_id=os.getenv("BEDROCK_MODEL_ID"),
-            jwt_secret=os.getenv("JWT_SECRET", "local-demo-only-change-me-32-bytes!"),
+            jwt_public_key=(
+                os.getenv("JWT_PUBLIC_KEY", "").replace("\\n", "\n").strip() or None
+            ),
             jwt_issuer=os.getenv("JWT_ISSUER", "tradesentry"),
             jwt_audience=os.getenv("JWT_AUDIENCE", "tradesentry-dashboard"),
+            jwt_access_ttl_seconds=int(os.getenv("JWT_ACCESS_TTL_SECONDS", "3600")),
+            jwt_refresh_ttl_seconds=int(os.getenv("JWT_REFRESH_TTL_SECONDS", "86400")),
+            rate_limit_ip_per_minute=int(os.getenv("RATE_LIMIT_IP_PER_MINUTE", "100")),
+            rate_limit_user_per_minute=int(os.getenv("RATE_LIMIT_USER_PER_MINUTE", "200")),
+            rate_limit_upload_per_minute=int(
+                os.getenv("RATE_LIMIT_UPLOAD_PER_MINUTE", "10")
+            ),
             log_level=os.getenv("LOG_LEVEL", "INFO"),
         )

@@ -5,7 +5,6 @@ from decimal import Decimal
 from pathlib import Path
 
 from fastapi.testclient import TestClient
-from tradesentry_api.config import Settings
 from tradesentry_api.main import create_app
 
 from dna import build_transaction_dna
@@ -26,6 +25,7 @@ from models.contracts import (
     PackingListFields,
 )
 from models.dna import ConflictSeverity
+from tests.security_support import auth_headers, secure_settings
 
 NOW = datetime(2026, 8, 21, 12, 0, tzinfo=UTC)
 ROOT = Path(__file__).resolve().parents[2]
@@ -165,7 +165,7 @@ def test_fallback_value_records_actual_source_and_unknown_currency_is_not_conver
 
 
 def test_transaction_dna_post_then_get() -> None:
-    with TestClient(create_app(Settings())) as client:
+    with TestClient(create_app(secure_settings()), headers=auth_headers()) as client:
         created = client.post("/cases", json={"case_id": "DNA-CASE", "ibu_id": "IBU-A"})
         assert created.status_code == 201
         for filename in ("lc.pdf", "commercial_invoice.pdf", "bill_of_lading.pdf"):
@@ -186,7 +186,7 @@ def test_transaction_dna_post_then_get() -> None:
 
 
 def test_transaction_dna_requires_case_and_extracted_documents() -> None:
-    with TestClient(create_app(Settings())) as client:
+    with TestClient(create_app(secure_settings()), headers=auth_headers()) as client:
         missing = client.post("/cases/DOES-NOT-EXIST/transaction-dna")
         client.post("/cases", json={"case_id": "EMPTY", "ibu_id": "IBU-A"})
         empty = client.post("/cases/EMPTY/transaction-dna")

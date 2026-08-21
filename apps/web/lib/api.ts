@@ -81,7 +81,11 @@ export async function submitReview(
 ): Promise<OfficerDecision> {
   return json(await fetch(`${API_URL}/cases/${caseId}/review`, {
     method: "POST",
-    headers: { ...auth(token), "Content-Type": "application/json" },
+    headers: {
+      ...auth(token),
+      "Content-Type": "application/json",
+      "Idempotency-Key": crypto.randomUUID(),
+    },
     body: JSON.stringify({ decision, comment }),
   }));
 }

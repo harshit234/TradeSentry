@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from datetime import UTC, datetime
 from typing import Annotated, Any, cast
 from uuid import uuid4
@@ -16,8 +17,8 @@ from models.review import (
     SettlementReadiness,
 )
 
-from .audit_store import AuditEvent
-from .auth import Principal, authenticate, require_officer, require_viewer
+from .audit_store import AuditEventType, event_from_request
+from .auth import Principal, request_principal, require_officer, require_viewer
 from .documents import CaseRecord
 from .services import Services
 
@@ -28,8 +29,8 @@ def _services(request: Request) -> Services:
     return cast(Services, request.app.state.services)
 
 
-def _principal(services: Services, authorization: str | None) -> Principal:
-    principal = authenticate(authorization, services.settings)
+def _principal(request: Request) -> Principal:
+    principal = request_principal(request)
     require_viewer(principal)
     return principal
 
@@ -98,12 +99,23 @@ async def _dashboard_case(services: Services, case: CaseRecord) -> DashboardCase
     )
 
 
-async def _report(services: Services, case: CaseRecord) -> CaseReport:
+async def _report(request: Request, services: Services, case: CaseRecord) -> CaseReport:
     investigation = await services.investigation_store.get(case.id)
     decisions = await services.review_store.list_for_case(case.id)
     documents = await services.repository.list_documents(case.id)
-    report_documents = [
-        ReportDocument(
+    report_documents: list[ReportDocument] = []
+    for document in documents:
+        view_url = await services.storage.presigned_url(document.s3_key, 900)
+        download_url = await services.storage.presigned_url(document.s3_key, 900)
+        await services.audit_store.record(
+            event_from_request(
+                request,
+                event_type=AuditEventType.PRESIGNED_URL_GENERATED,
+                case_id=case.id,
+                payload_ref=f"s3://key/{document.s3_key}",
+            )
+        )
+        report_documents.append(ReportDocument(
             document_id=document.id,
             filename=document.filename,
             document_type=document.document_type.value,
@@ -113,11 +125,9 @@ async def _report(services: Services, case: CaseRecord) -> CaseReport:
                 None if document.extraction is None
                 else document.extraction.model_dump(mode="json")
             ),
-            view_url=await services.storage.presigned_url(document.s3_key, 900),
-            download_url=await services.storage.presigned_url(document.s3_key, 900),
-        )
-        for document in documents
-    ]
+            view_url=view_url,
+            download_url=download_url,
+        ))
     state = None if investigation is None else investigation.state
     fraud_checks: dict[str, Any] = {}
     if state is not None:
@@ -168,7 +178,6 @@ async def _report(services: Services, case: CaseRecord) -> CaseReport:
 @router.get("", response_model=list[DashboardCase])
 async def list_cases(
     request: Request,
-    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
     ibu_id: str | None = Query(default=None),
     risk_band: str | None = Query(default=None),
     status: str | None = Query(default=None),
@@ -176,7 +185,7 @@ async def list_cases(
     created_to: Annotated[datetime | None, Query()] = None,
 ) -> list[DashboardCase]:
     services = _services(request)
-    principal = _principal(services, authorization)
+    principal = _principal(request)
     if ibu_id is not None and ibu_id != principal.ibu_id:
         raise HTTPException(status_code=403, detail="IBU tenant access denied")
     result: list[DashboardCase] = []
@@ -200,31 +209,28 @@ async def list_cases(
 async def get_case(
     case_id: str,
     request: Request,
-    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
 ) -> CaseReport:
     services = _services(request)
-    principal = _principal(services, authorization)
+    principal = _principal(request)
     case = await _case_for_principal(services, case_id, principal)
-    return await _report(services, case)
+    return await _report(request, services, case)
 
 
 @router.get("/{case_id}/report", response_model=CaseReport)
 async def get_report(
     case_id: str,
     request: Request,
-    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
 ) -> CaseReport:
-    return await get_case(case_id, request, authorization)
+    return await get_case(case_id, request)
 
 
 @router.get("/{case_id}/settlement-readiness", response_model=SettlementReadiness)
 async def get_settlement_readiness(
     case_id: str,
     request: Request,
-    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
 ) -> SettlementReadiness:
     services = _services(request)
-    principal = _principal(services, authorization)
+    principal = _principal(request)
     await _case_for_principal(services, case_id, principal)
     return await _readiness(services, case_id)
 
@@ -234,12 +240,18 @@ async def submit_review(
     case_id: str,
     payload: ReviewRequest,
     request: Request,
-    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=16)],
 ) -> OfficerDecision:
     services = _services(request)
-    principal = authenticate(authorization, services.settings)
+    principal = _principal(request)
     require_officer(principal)
     await _case_for_principal(services, case_id, principal)
+    key_hash = hashlib.sha256(idempotency_key.encode()).hexdigest()
+    existing = await services.review_store.get_by_idempotency(case_id, key_hash)
+    if existing is not None:
+        if existing.decision == payload.decision and existing.comment == payload.comment:
+            return existing
+        raise HTTPException(status_code=409, detail="Idempotency key was already used")
     decision = OfficerDecision(
         decision_id=f"decision-{uuid4().hex}",
         case_id=case_id,
@@ -247,6 +259,7 @@ async def submit_review(
         comment=payload.comment,
         officer_id=principal.subject,
         officer_role=principal.role,
+        idempotency_key_hash=key_hash,
         created_at=datetime.now(UTC),
     )
     await services.review_store.save(decision)
@@ -257,13 +270,24 @@ async def submit_review(
         ReviewDecision.REQUEST_MORE_EVIDENCE: "PENDING — MORE EVIDENCE",
     }[decision.decision]
     await services.repository.update_case_status(case_id, status)
+    comment_hash = hashlib.sha256(payload.comment.encode()).hexdigest()
     await services.audit_store.record(
-        AuditEvent(
+        event_from_request(
+            request,
+            event_type=AuditEventType.OFFICER_DECISION,
             case_id=case_id,
-            actor_id=principal.subject,
-            event_type="OFFICER_REVIEW_DECISION",
-            payload_ref=f"decision://{decision.decision_id}",
-            created_at=decision.created_at,
+            payload_ref=(
+                f"decision://{decision.decision_id}/{decision.decision.value}/"
+                f"comment-sha256-{comment_hash}"
+            ),
+        )
+    )
+    await services.audit_store.record(
+        event_from_request(
+            request,
+            event_type=AuditEventType.SETTLEMENT_STATUS_CHANGED,
+            case_id=case_id,
+            payload_ref=f"case-status://{case_id}/{decision.decision.value}",
         )
     )
     return decision

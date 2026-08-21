@@ -216,8 +216,7 @@ async def test_all_four_tools_are_isolated_and_every_call_is_audited() -> None:
     assert isinstance(vessel, VesselVerificationResult)
     assert all(isinstance(item, EntityVerificationResult) for item in entities)
     assert isinstance(sanctions, SanctionsScreeningResult)
-    assert await audit.count("FRAUD_TBML_TOOL_STARTED") == 4
-    assert await audit.count("FRAUD_TBML_TOOL_COMPLETED") == 4
+    assert await audit.count("TOOL_CALLED") == 8
     assert all("ABC Trading Ltd" not in event.payload_ref for event in audit.events)
 
 
@@ -229,4 +228,3 @@ async def test_idempotent_reads_repeat_the_same_decisions() -> None:
     assert first.signal == second.signal
     assert first.deviation_from_p50_pct == second.deviation_from_p50_pct
     assert first.reference_p90 == second.reference_p90
-

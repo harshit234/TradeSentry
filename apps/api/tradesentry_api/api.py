@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from typing import Annotated, cast
 from uuid import uuid4
 
-from fastapi import APIRouter, BackgroundTasks, File, Header, HTTPException, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Request, UploadFile
 
 from models.contracts import (
     CaseCreate,
@@ -19,6 +19,8 @@ from models.contracts import (
     UploadResponse,
 )
 
+from .audit_store import AuditEventType, event_from_request
+from .auth import ADMIN, request_principal, require_roles
 from .documents import (
     CaseRecord,
     DocumentRecord,
@@ -27,6 +29,7 @@ from .documents import (
     sanitize_filename,
     validate_upload,
 )
+from .malware import ScanStatus
 from .services import Services
 
 router = APIRouter(prefix="/cases", tags=["documents"])
@@ -40,13 +43,25 @@ async def _case_or_404(request: Request, case_id: str) -> CaseRecord:
     case = await _services(request).repository.get_case(case_id)
     if case is None:
         raise HTTPException(status_code=404, detail="Case not found")
+    principal = request_principal(request)
+    if case.ibu_id != principal.ibu_id:
+        raise HTTPException(status_code=403, detail="IBU tenant access denied")
     return case
 
 
 async def _response(
-    services: Services, document: DocumentRecord, include_detail: bool = False
+    request: Request, services: Services, document: DocumentRecord, include_detail: bool = False
 ) -> DocumentResponse:
     view_url = await services.storage.presigned_url(document.s3_key) if include_detail else None
+    if include_detail:
+        await services.audit_store.record(
+            event_from_request(
+                request,
+                event_type=AuditEventType.PRESIGNED_URL_GENERATED,
+                case_id=document.case_id,
+                payload_ref=f"s3://key/{document.s3_key}",
+            )
+        )
     return DocumentResponse(
         document_id=document.id,
         case_id=document.case_id,
@@ -64,9 +79,22 @@ async def _response(
 
 @router.post("", response_model=CaseResponse, status_code=201)
 async def create_case(payload: CaseCreate, request: Request) -> CaseResponse:
+    principal = request_principal(request)
+    require_roles(principal, ADMIN)
+    if payload.ibu_id != principal.ibu_id:
+        raise HTTPException(status_code=403, detail="IBU tenant access denied")
     case_id = payload.case_id or f"CASE-{uuid4().hex[:12].upper()}"
-    case = await _services(request).repository.create_case(
+    services = _services(request)
+    case = await services.repository.create_case(
         CaseRecord(id=case_id, ibu_id=payload.ibu_id)
+    )
+    await services.audit_store.record(
+        event_from_request(
+            request,
+            event_type=AuditEventType.CASE_CREATED,
+            case_id=case.id,
+            payload_ref=f"case://{case.id}",
+        )
     )
     return CaseResponse(case_id=case.id, ibu_id=case.ibu_id, status=case.status)
 
@@ -77,15 +105,21 @@ async def upload_document(
     request: Request,
     background_tasks: BackgroundTasks,
     file: Annotated[UploadFile, File()],
-    uploaded_by: Annotated[str, Header(alias="X-Uploaded-By")] = "demo-officer",
 ) -> UploadResponse:
     await _case_or_404(request, case_id)
     services = _services(request)
+    principal = request_principal(request)
+    require_roles(principal, ADMIN)
     data = await file.read(services.settings.max_upload_bytes + 1)
     try:
         mime_type = validate_upload(data, services.settings.max_upload_bytes)
     except DocumentValidationError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    scan = await services.malware_scanner.scan(data)
+    if scan.status is ScanStatus.MALICIOUS:
+        raise HTTPException(status_code=415, detail="Document failed malware screening")
+    if scan.status is ScanStatus.UNAVAILABLE:
+        raise HTTPException(status_code=503, detail="Malware screening is unavailable")
     digest = hashlib.sha256(data).hexdigest()
     existing = await services.repository.get_by_hash(case_id, digest)
     if existing is not None:
@@ -98,7 +132,7 @@ async def upload_document(
         key,
         {
             "case_id": case_id,
-            "uploaded_by": uploaded_by[:128],
+            "uploaded_by": principal.officer_id[:128],
             "upload_timestamp": datetime.now(UTC).isoformat(),
         },
     )
@@ -111,6 +145,14 @@ async def upload_document(
         s3_key=key,
     )
     await services.repository.save_document(document)
+    await services.audit_store.record(
+        event_from_request(
+            request,
+            event_type=AuditEventType.DOCUMENT_UPLOADED,
+            case_id=case_id,
+            payload_ref=f"document://{document_id}",
+        )
+    )
     background_tasks.add_task(services.processor.process, document, data)
     return UploadResponse(document_id=document_id, status="UPLOADED")
 
@@ -120,7 +162,7 @@ async def list_documents(case_id: str, request: Request) -> list[DocumentRespons
     await _case_or_404(request, case_id)
     services = _services(request)
     return [
-        await _response(services, item)
+        await _response(request, services, item)
         for item in await services.repository.list_documents(case_id)
     ]
 
@@ -132,7 +174,7 @@ async def get_document(case_id: str, document_id: str, request: Request) -> Docu
     document = await services.repository.get_document(case_id, document_id)
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found")
-    return await _response(services, document, include_detail=True)
+    return await _response(request, services, document, include_detail=True)
 
 
 @router.get("/{case_id}/completeness", response_model=DocumentCompleteness)
@@ -154,13 +196,22 @@ async def completeness(case_id: str, request: Request) -> DocumentCompleteness:
         None,
     )
     if lc is None:
-        return DocumentCompleteness(
+        result = DocumentCompleteness(
             required_types=[],
             present_types=sorted(completed, key=str),
             missing_types=[],
             status=CompletenessStatus.PENDING_LC,
             can_run_investigation=False,
         )
+        await _services(request).audit_store.record(
+            event_from_request(
+                request,
+                event_type=AuditEventType.COMPLETENESS_CHECKED,
+                case_id=case_id,
+                payload_ref=f"completeness://{case_id}/pending-lc",
+            )
+        )
+        return result
     required = list(DocumentType)
     required.remove(DocumentType.UNKNOWN)
     extraction = lc.extraction
@@ -173,10 +224,19 @@ async def completeness(case_id: str, request: Request) -> DocumentCompleteness:
             item.document_type for item in extraction.fields.required_documents if item.required
         ]
     missing = [item for item in required if item not in completed]
-    return DocumentCompleteness(
+    result = DocumentCompleteness(
         required_types=required,
         present_types=sorted(completed, key=str),
         missing_types=missing,
         status=CompletenessStatus.INCOMPLETE if missing else CompletenessStatus.COMPLETE,
         can_run_investigation=not missing,
     )
+    await _services(request).audit_store.record(
+        event_from_request(
+            request,
+            event_type=AuditEventType.COMPLETENESS_CHECKED,
+            case_id=case_id,
+            payload_ref=f"completeness://{case_id}/{result.status.value}",
+        )
+    )
+    return result

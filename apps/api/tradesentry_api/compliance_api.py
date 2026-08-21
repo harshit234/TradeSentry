@@ -22,6 +22,8 @@ from models.contracts import (
 from rules.engine import evaluate_compliance
 from rules.parser import parse_lc_requirements
 
+from .audit_store import AuditEventType, event_from_request
+from .auth import ADMIN, request_principal, require_roles
 from .documents import DocumentRecord
 from .services import Services
 
@@ -103,15 +105,37 @@ async def run_compliance(
     case_id: str, request: Request, payload: ComplianceRunRequest | None = None
 ) -> ComplianceResult:
     services = _services(request)
+    principal = request_principal(request)
+    require_roles(principal, ADMIN)
+    case = await services.repository.get_case(case_id)
+    if case is None:
+        raise HTTPException(status_code=404, detail="Case not found")
+    if case.ibu_id != principal.ibu_id:
+        raise HTTPException(status_code=403, detail="IBU tenant access denied")
     facts = await build_compliance_facts(services, case_id, payload or ComplianceRunRequest())
     result = evaluate_compliance(facts)
     await services.compliance_store.save(result)
+    await services.audit_store.record(
+        event_from_request(
+            request,
+            event_type=AuditEventType.UCP_RULE_EXECUTED,
+            case_id=case_id,
+            payload_ref=f"compliance://{case_id}/evaluation",
+        )
+    )
     return result
 
 
 @router.get("/{case_id}/compliance", response_model=ComplianceResult)
 async def get_compliance(case_id: str, request: Request) -> ComplianceResult:
-    result = await _services(request).compliance_store.get(case_id)
+    services = _services(request)
+    principal = request_principal(request)
+    case = await services.repository.get_case(case_id)
+    if case is None:
+        raise HTTPException(status_code=404, detail="Case not found")
+    if case.ibu_id != principal.ibu_id:
+        raise HTTPException(status_code=403, detail="IBU tenant access denied")
+    result = await services.compliance_store.get(case_id)
     if result is None:
         raise HTTPException(status_code=404, detail="Compliance result not found")
     return result

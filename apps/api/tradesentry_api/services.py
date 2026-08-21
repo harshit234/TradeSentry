@@ -35,6 +35,7 @@ from .investigation_store import (
     InvestigationStore,
     PostgresInvestigationStore,
 )
+from .malware import MalwareScanner, MockMalwareScanner
 from .ocr import (
     BedrockLLMFallback,
     LLMFallback,
@@ -44,6 +45,7 @@ from .ocr import (
     TextractOCRProvider,
 )
 from .processor import DocumentProcessor
+from .rate_limit import InMemoryRateLimiter, RateLimiter, RedisRateLimiter
 from .redis_client import InMemoryRedis, RedisCache
 from .repository import (
     DocumentRepository,
@@ -105,6 +107,8 @@ class Services:
     fraud_tbml_runner: FraudTBMLToolRunner
     investigation_store: InvestigationStore
     review_store: ReviewStore
+    rate_limiter: RateLimiter
+    malware_scanner: MalwareScanner
 
     @classmethod
     def build(cls, settings: Settings) -> "Services":
@@ -125,6 +129,7 @@ class Services:
             repository = PostgresDocumentRepository(database)
             textract = TextractCheck(settings.aws_region, settings.textract_endpoint_url)
             redis = RedisCache(settings.redis_url)
+            rate_limiter: RateLimiter = RedisRateLimiter(redis.client)
             compliance_store: ComplianceStore = PostgresComplianceStore(database)
             dna_store: TransactionDNAStore = PostgresTransactionDNAStore(database)
             cross_ibu_registry: CrossIBURegistry = DynamoDBCrossIBURegistry(
@@ -141,6 +146,7 @@ class Services:
             repository = InMemoryDocumentRepository()
             textract = StubCheck()
             redis = InMemoryRedis()
+            rate_limiter = InMemoryRateLimiter()
             compliance_store = InMemoryComplianceStore()
             dna_store = InMemoryTransactionDNAStore()
             cross_ibu_registry = InMemoryCrossIBURegistry()
@@ -162,7 +168,9 @@ class Services:
             if settings.bedrock_model_id
             else NoOpLLMFallback()
         )
-        processor = DocumentProcessor(repository, ocr, fallback, settings.s3_bucket)
+        processor = DocumentProcessor(
+            repository, ocr, fallback, settings.s3_bucket, audit_store
+        )
         fraud_tbml_runner = FraudTBMLToolRunner(
             MockPriceBenchmarkProvider(),
             MockVesselVerificationProvider(),
@@ -187,6 +195,8 @@ class Services:
             fraud_tbml_runner,
             investigation_store,
             review_store,
+            rate_limiter,
+            MockMalwareScanner(),
         )
 
     async def close(self) -> None:

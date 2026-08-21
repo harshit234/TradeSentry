@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
@@ -23,9 +24,12 @@ from models.contracts import (
     PackingListFields,
 )
 
+from .audit_store import AuditEvent, AuditEventType, AuditStore
 from .documents import DocumentRecord, classify_document
 from .ocr import LLMFallback, OCRProvider, RawOCRResult
 from .repository import DocumentRepository
+
+logger = logging.getLogger(__name__)
 
 QUESTION_FIELDS: dict[str, str] = {
     "what is the lc number?": "lc_number",
@@ -141,11 +145,30 @@ class DocumentProcessor:
         ocr: OCRProvider,
         fallback: LLMFallback,
         bucket: str,
+        audit_store: AuditStore | None = None,
     ) -> None:
         self.repository = repository
         self.ocr = ocr
         self.fallback = fallback
         self.bucket = bucket
+        self.audit_store = audit_store
+
+    async def _audit(
+        self, document: DocumentRecord, event_type: AuditEventType, suffix: str
+    ) -> None:
+        if self.audit_store is None:
+            return
+        case = await self.repository.get_case(document.case_id)
+        await self.audit_store.record(
+            AuditEvent(
+                case_id=document.case_id,
+                ibu_id="system" if case is None else case.ibu_id,
+                actor_id="document-processor",
+                actor_role="AGENT",
+                event_type=event_type,
+                payload_ref=f"document://{document.id}/{suffix}",
+            )
+        )
 
     async def process(self, document: DocumentRecord, data: bytes) -> None:
         try:
@@ -154,6 +177,7 @@ class DocumentProcessor:
             if document.document_type is DocumentType.UNKNOWN:
                 document.advisory = "Document type could not be identified; generic extraction used"
             await self.repository.save_document(document)
+            await self._audit(document, AuditEventType.DOCUMENT_CLASSIFIED, "classified")
             document.status = DocumentStatus.EXTRACTING
             await self.repository.save_document(document)
             raw = await self.ocr.analyze_document(
@@ -173,6 +197,13 @@ class DocumentProcessor:
             document.overall_confidence = extraction.overall_confidence
             document.status = DocumentStatus(extraction.processing_status)
             await self.repository.save_document(document)
+            await self._audit(document, AuditEventType.DOCUMENT_EXTRACTED, "extracted")
+            logger.info(
+                "Document extraction completed",
+                extra={"extraction_confidence": extraction.overall_confidence},
+            )
+            if document.document_type is DocumentType.LETTER_OF_CREDIT:
+                await self._audit(document, AuditEventType.LC_PARSED, "lc-parsed")
         except TimeoutError:
             document.status = DocumentStatus.FAILED
             document.error_code = "DATA_UNAVAILABLE"

@@ -13,6 +13,7 @@ from tradesentry_api.processor import DocumentProcessor
 from tradesentry_api.services import Services
 
 from models.contracts import DocumentType
+from tests.security_support import auth_headers, secure_settings, with_security
 
 ROOT = Path(__file__).resolve().parents[2]
 SAMPLES = ROOT / "fixtures" / "sample_documents" / "case_a_clean"
@@ -44,7 +45,8 @@ def test_magic_bytes_reject_executable() -> None:
 
 
 def _client(settings: Settings | None = None, services: Services | None = None) -> TestClient:
-    return TestClient(create_app(settings or Settings(), services))
+    secured = secure_settings() if settings is None else with_security(settings)
+    return TestClient(create_app(secured, services), headers=auth_headers())
 
 
 def _create_case(client: TestClient, case_id: str = "TEST-CASE") -> None:
@@ -93,7 +95,7 @@ def test_size_limit_returns_413() -> None:
     assert response.status_code == 413
 
 
-def test_malformed_pdf_becomes_failed_not_500() -> None:
+def test_malformed_pdf_is_rejected_before_storage() -> None:
     with _client() as client:
         _create_case(client)
         response = client.post(
@@ -101,9 +103,8 @@ def test_malformed_pdf_becomes_failed_not_500() -> None:
             files={"file": ("invoice.pdf", b"%PDF-malformed", "application/pdf")},
         )
         listing = client.get("/cases/TEST-CASE/documents").json()
-    assert response.status_code == 202
-    assert listing[0]["status"] == "FAILED"
-    assert listing[0]["error_code"] == "EXTRACTION_FAILED"
+    assert response.status_code == 415
+    assert listing == []
 
 
 class LowConfidenceOCR:

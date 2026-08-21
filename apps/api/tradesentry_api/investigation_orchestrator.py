@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
+import logging
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from time import monotonic
@@ -44,11 +46,13 @@ from models.investigation import (
 )
 from rules.engine import evaluate_compliance
 
-from .audit_store import AuditEvent
+from .audit_store import AuditEvent, AuditEventType
 from .compliance_api import build_compliance_facts
 from .services import Services
+from .telemetry import traced
 
 T = TypeVar("T")
+logger = logging.getLogger(__name__)
 
 
 class InvestigationOrchestrator:
@@ -68,17 +72,17 @@ class InvestigationOrchestrator:
 
     def _build_graph(self) -> Any:
         graph = StateGraph(InvestigationState)
-        graph.add_node("load_case", self.load_case)
-        graph.add_node("check_completeness", self.check_completeness)
-        graph.add_node("run_ucp_rules", self.run_ucp_rules)
-        graph.add_node("build_transaction_dna", self.build_transaction_dna)
-        graph.add_node("cross_ibu_check", self.cross_ibu_check)
-        graph.add_node("fraud_triage", self.fraud_triage)
-        graph.add_node("conditional_tool_calls", self.conditional_tool_calls)
-        graph.add_node("aggregate_evidence", self.aggregate_evidence)
-        graph.add_node("risk_assessment", self.risk_assessment)
-        graph.add_node("human_review_gate", self.human_review_gate)
-        graph.add_node("settlement_readiness", self.settlement_readiness)
+        graph.add_node("load_case", self._traced_node("load_case", self.load_case))
+        graph.add_node("check_completeness", self._traced_node("check_completeness", self.check_completeness))
+        graph.add_node("run_ucp_rules", self._traced_node("run_ucp_rules", self.run_ucp_rules))
+        graph.add_node("build_transaction_dna", self._traced_node("build_transaction_dna", self.build_transaction_dna))
+        graph.add_node("cross_ibu_check", self._traced_node("cross_ibu_check", self.cross_ibu_check))
+        graph.add_node("fraud_triage", self._traced_node("fraud_triage", self.fraud_triage))
+        graph.add_node("conditional_tool_calls", self._traced_node("conditional_tool_calls", self.conditional_tool_calls))
+        graph.add_node("aggregate_evidence", self._traced_node("aggregate_evidence", self.aggregate_evidence))
+        graph.add_node("risk_assessment", self._traced_node("risk_assessment", self.risk_assessment))
+        graph.add_node("human_review_gate", self._traced_node("human_review_gate", self.human_review_gate))
+        graph.add_node("settlement_readiness", self._traced_node("settlement_readiness", self.settlement_readiness))
         graph.add_edge(START, "load_case")
         graph.add_conditional_edges(
             "load_case", self._after_load, {"continue": "check_completeness", "stop": END}
@@ -99,9 +103,19 @@ class InvestigationOrchestrator:
         graph.add_edge("settlement_readiness", END)
         return graph.compile(checkpointer=self.checkpointer)
 
+    @staticmethod
+    def _traced_node(name: str, operation: Callable[..., Any]) -> Callable[..., Any]:
+        async def invoke(state: InvestigationState) -> Any:
+            with traced(f"langgraph.{name}", case_id=state.case_id, ibu_id=state.ibu_id):
+                result = operation(state)
+                return await result if inspect.isawaitable(result) else result
+
+        return invoke
+
     async def run(
         self, case_id: str, ibu_id: str, tool_budget: int | None = None
     ) -> InvestigationResponse:
+        investigation_started = monotonic()
         initial = InvestigationState(
             case_id=case_id,
             ibu_id=ibu_id,
@@ -110,7 +124,8 @@ class InvestigationOrchestrator:
             ),
         )
         config = {"configurable": {"thread_id": f"{ibu_id}:{case_id}:{datetime.now(UTC).timestamp()}"}}
-        raw = await self.graph.ainvoke(initial, config)
+        with traced("case.investigation", case_id=case_id, ibu_id=ibu_id):
+            raw = await self.graph.ainvoke(initial, config)
         values = dict(raw)
         interrupted = bool(values.pop("__interrupt__", ()))
         state = InvestigationState.model_validate(values)
@@ -130,6 +145,47 @@ class InvestigationOrchestrator:
         )
         response = InvestigationResponse(state=state, workflow_status=workflow_status)
         await self.services.investigation_store.save(response)
+        await self.services.audit_store.record(
+            AuditEvent(
+                case_id=case_id,
+                ibu_id=ibu_id,
+                actor_id="investigation-orchestrator",
+                actor_role="AGENT",
+                event_type=AuditEventType.AGENT_DECISION,
+                payload_ref=f"agent://{case_id}/{state.stop_reason or 'complete'}",
+            )
+        )
+        if state.risk_band is not None:
+            await self.services.audit_store.record(
+                AuditEvent(
+                    case_id=case_id,
+                    ibu_id=ibu_id,
+                    actor_id="investigation-orchestrator",
+                    actor_role="AGENT",
+                    event_type=AuditEventType.RISK_SCORED,
+                    payload_ref=f"risk://{case_id}/{state.risk_band.value}/{state.risk_score}",
+                )
+            )
+        if state.requires_human_review:
+            await self.services.audit_store.record(
+                AuditEvent(
+                    case_id=case_id,
+                    ibu_id=ibu_id,
+                    actor_id="investigation-orchestrator",
+                    actor_role="AGENT",
+                    event_type=AuditEventType.HUMAN_REVIEW_REQUIRED,
+                    payload_ref=f"review-gate://{case_id}/{state.stop_reason or 'required'}",
+                )
+            )
+        logger.info(
+            "Case investigation completed",
+            extra={
+                "case_processing_latency_ms": round(
+                    (monotonic() - investigation_started) * 1000, 3
+                ),
+                "risk_band": None if state.risk_band is None else state.risk_band.value,
+            },
+        )
         return response
 
     @staticmethod
@@ -446,11 +502,16 @@ class InvestigationOrchestrator:
             errors.append(f"Tool budget exhausted before {tool_name}")
         else:
             try:
-                result = await asyncio.wait_for(operation(), timeout=self.tool_timeout_seconds)
+                with traced(f"tool.{tool_name}", case_id=state.case_id, ibu_id=state.ibu_id):
+                    result = await asyncio.wait_for(operation(), timeout=self.tool_timeout_seconds)
             except Exception as exc:  # noqa: BLE001 - graph records failure and continues safely
                 status = "DATA_UNAVAILABLE"
                 errors.append(f"{tool_name} unavailable ({type(exc).__name__})")
         duration_ms = round((monotonic() - started) * 1000, 3)
+        logger.info(
+            "Investigation tool call completed",
+            extra={"tool_call_latency_ms": duration_ms, "tool_name": tool_name},
+        )
         record = ToolCallRecord(
             tool_name=tool_name,
             inputs_hash=safe_inputs_hash(inputs),
@@ -461,8 +522,10 @@ class InvestigationOrchestrator:
         await self.services.audit_store.record(
             AuditEvent(
                 case_id=state.case_id,
+                ibu_id=state.ibu_id,
                 actor_id="investigation-orchestrator",
-                event_type="INVESTIGATION_TOOL_CALLED",
+                actor_role="AGENT",
+                event_type=AuditEventType.TOOL_CALLED,
                 payload_ref=f"tool={tool_name};inputs={record.inputs_hash[:12]};status={status}",
                 created_at=called_at,
             )
