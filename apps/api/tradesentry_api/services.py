@@ -4,6 +4,11 @@ from typing import Protocol
 import boto3  # type: ignore[import-untyped]
 from botocore.exceptions import ClientError  # type: ignore[import-untyped]
 
+from .compliance_store import (
+    ComplianceStore,
+    InMemoryComplianceStore,
+    PostgresComplianceStore,
+)
 from .config import Settings
 from .db import Database, InMemoryDatabase
 from .ocr import (
@@ -68,6 +73,7 @@ class Services:
     repository: DocumentRepository
     processor: DocumentProcessor
     settings: Settings
+    compliance_store: ComplianceStore
 
     @classmethod
     def build(cls, settings: Settings) -> "Services":
@@ -88,12 +94,14 @@ class Services:
             repository = PostgresDocumentRepository(database)
             textract = TextractCheck(settings.aws_region, settings.textract_endpoint_url)
             redis = RedisCache(settings.redis_url)
+            compliance_store: ComplianceStore = PostgresComplianceStore(database)
         else:
             database = InMemoryDatabase()
             storage = InMemoryStorage()
             repository = InMemoryDocumentRepository()
             textract = StubCheck()
             redis = InMemoryRedis()
+            compliance_store = InMemoryComplianceStore()
         ocr: OCRProvider = (
             TextractOCRProvider(
                 settings.aws_region,
@@ -118,6 +126,7 @@ class Services:
             repository,
             processor,
             settings,
+            compliance_store,
         )
 
     async def close(self) -> None:

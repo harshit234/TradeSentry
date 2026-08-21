@@ -1,0 +1,13 @@
+{
+  "rules": [
+    {"rule_id":"UCP600-ART14C-PRESENTATION-PERIOD","ucp_article":"Art. 14(c)","description":"Presentation period and credit expiry checks supplied for Sprint 2.","version":"1.0.0","enabled":true,"parameters":{"default_transport_presentation_days":"21"}},
+    {"rule_id":"UCP600-ART14D-DATA-CONSISTENCY","ucp_article":"Art. 14(d)","description":"Cross-document data consistency checks supplied for Sprint 2.","version":"1.0.0","enabled":true,"parameters":{"fuzzy_advisory_threshold":"0.82"}},
+    {"rule_id":"UCP600-ART18-COMMERCIAL-INVOICE","ucp_article":"Art. 18","description":"Commercial invoice checks supplied for Sprint 2.","version":"1.0.0","enabled":true,"parameters":{}},
+    {"rule_id":"UCP600-ART20-BILL-OF-LADING","ucp_article":"Art. 20","description":"Bill of lading checks supplied for Sprint 2.","version":"1.0.0","enabled":true,"parameters":{}},
+    {"rule_id":"UCP600-ART28-INSURANCE","ucp_article":"Art. 28","description":"Insurance checks supplied for Sprint 2.","version":"1.0.0","enabled":true,"parameters":{"minimum_coverage_ratio":"1.10"}},
+    {"rule_id":"UCP600-ART30A-AMOUNT-TOLERANCE","ucp_article":"Art. 30(a) / Art. 18","description":"Credit amount tolerance supplied for Sprint 2; the golden-case about range is the permitted invoice and drawing cap.","version":"1.0.0","enabled":true,"parameters":{"about_tolerance":"0.10"}},
+    {"rule_id":"UCP600-ART30B-QUANTITY-TOLERANCE","ucp_article":"Art. 30(b)","description":"Bulk or generic quantity tolerance supplied for Sprint 2.","version":"1.0.0","enabled":true,"parameters":{"bulk_tolerance":"0.05"}},
+    {"rule_id":"UCP600-ART30C-DRAWING-LIMIT","ucp_article":"Art. 30(c)","description":"Drawing cap supplied for Sprint 2, evaluated against the applicable Art. 30(a) upper range.","version":"1.0.0","enabled":true,"parameters":{}},
+    {"rule_id":"UCP600-ART31-PARTIAL-SHIPMENTS","ucp_article":"Art. 31","description":"Partial shipment check supplied for Sprint 2.","version":"1.0.0","enabled":true,"parameters":{}}
+  ]
+}

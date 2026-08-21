@@ -2,11 +2,11 @@
 
 AWS-first, human-authorized pre-settlement intelligence prototype for simulated GIFT City IBU workflows.
 
-## Current scope: Sprint 1
+## Current scope: Sprint 2
 
-The Sprint 0 foundation now includes Sprint 1 document intelligence: secure document upload, classification for seven trade-document types, Textract orchestration, typed extraction evidence, confidence and page references, completeness gating, durable persistence, and an idempotent 28-document demo seed.
+The Sprint 0 foundation now includes Sprint 1 document intelligence and Sprint 2 deterministic compliance: secure document upload, typed extraction evidence, completeness gating, a versioned pure-Python UCP rule engine, durable persistence, and an idempotent 28-document demo seed.
 
-Compliance rules, cross-IBU intelligence, investigation agents, fraud decisions, and settlement actions remain intentionally absent until their own sprints. Risk signals are not legal findings, and humans remain the final authority.
+Cross-IBU intelligence, investigation agents, fraud decisions, and settlement actions remain intentionally absent until their own sprints. Risk signals are not legal findings, and humans remain the final authority.
 
 ## Local development
 
@@ -31,6 +31,8 @@ Document endpoints:
 - `GET /cases/{case_id}/documents`
 - `GET /cases/{case_id}/documents/{document_id}`
 - `GET /cases/{case_id}/completeness`
+- `POST /cases/{case_id}/compliance`
+- `GET /cases/{case_id}/compliance`
 
 Bedrock fallback is optional. Set `BEDROCK_MODEL_ID` and use an AWS profile locally or the ECS task role in AWS; never store a Bedrock credential in this repository.
 

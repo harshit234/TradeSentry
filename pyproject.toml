@@ -21,7 +21,10 @@ requires = ["setuptools>=75"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["models"]
+packages = ["models", "rules"]
+
+[tool.setuptools.package-data]
+rules = ["config/*.json"]
 
 
 [project.optional-dependencies]
