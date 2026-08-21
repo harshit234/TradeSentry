@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
+from alembic.config import Config
 from fastapi.testclient import TestClient
 from tradesentry_api.config import Settings
 from tradesentry_api.investigation_orchestrator import InvestigationOrchestrator
@@ -107,3 +108,12 @@ def test_aws_badge_and_required_make_commands_are_present() -> None:
 def test_backup_video_manifest_has_one_slot_per_scenario() -> None:
     manifest = (ROOT / "docs" / "demo-videos" / "README.md").read_text()
     assert all(f"demo-{number}-" in manifest for number in range(1, 5))
+
+
+def test_alembic_database_url_escapes_config_interpolation() -> None:
+    database_url = "postgresql+asyncpg://user:p%3Cword@db/tradesentry"
+    config = Config()
+    config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
+    assert config.get_main_option("sqlalchemy.url") == database_url
+    migration_env = (ROOT / "db" / "migrations" / "env.py").read_text()
+    assert 'database_url.replace("%", "%%")' in migration_env
