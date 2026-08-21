@@ -205,6 +205,22 @@ async def list_cases(
     return result
 
 
+@router.get("/decisions/me", response_model=list[OfficerDecision])
+async def list_my_decisions(request: Request) -> list[OfficerDecision]:
+    services = _services(request)
+    principal = _principal(request)
+    decisions: list[OfficerDecision] = []
+    for case in await services.repository.list_cases():
+        if case.ibu_id != principal.ibu_id:
+            continue
+        decisions.extend(
+            item
+            for item in await services.review_store.list_for_case(case.id)
+            if item.officer_id == principal.officer_id
+        )
+    return sorted(decisions, key=lambda item: item.created_at, reverse=True)
+
+
 @router.get("/{case_id}", response_model=CaseReport)
 async def get_case(
     case_id: str,

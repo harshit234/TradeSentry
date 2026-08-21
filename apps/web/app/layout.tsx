@@ -3,6 +3,7 @@ import "./styles.css";
 import "./review.css";
 import "./table.css";
 import "./aws-badge.css";
+import "./dashboard-history.css";
 
 export const metadata: Metadata = {
   title: "TradeSentry | Trade Finance Intelligence",

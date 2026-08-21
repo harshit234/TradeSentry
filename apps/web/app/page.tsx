@@ -2,15 +2,19 @@
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { DashboardCase, getCases, TOKEN_KEY } from "../lib/api";
+import { AuditEvent, DashboardCase, getCases, getMyAuditEvents, getMyDecisions, OfficerDecision, TOKEN_KEY } from "../lib/api";
 import { AwsBadge } from "./aws-badge";
 
 type RiskFilter = "ALL" | "HIGH" | "MEDIUM" | "LOW";
+type DashboardView = "queue" | "decisions" | "audit";
 
 export default function Home() {
   const [token, setToken] = useState("");
   const [tokenInput, setTokenInput] = useState("");
   const [cases, setCases] = useState<DashboardCase[]>([]);
+  const [decisions, setDecisions] = useState<OfficerDecision[]>([]);
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
+  const [view, setView] = useState<DashboardView>("queue");
   const [query, setQuery] = useState("");
   const [risk, setRisk] = useState<RiskFilter>("ALL");
   const [status, setStatus] = useState("ALL");
@@ -24,6 +28,19 @@ export default function Home() {
     try { setCases(await getCases(activeToken)); }
     catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Unable to load cases"); }
     finally { setLoading(false); }
+  }, []);
+
+  const openView = useCallback(async (nextView: DashboardView, activeToken: string) => {
+    setView(nextView);
+    if (nextView === "queue") return;
+    setLoading(true);
+    setError("");
+    try {
+      if (nextView === "decisions") setDecisions(await getMyDecisions(activeToken));
+      else setAuditEvents(await getMyAuditEvents(activeToken));
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Unable to load secure history");
+    } finally { setLoading(false); }
   }, []);
 
   useEffect(() => {
@@ -54,7 +71,7 @@ export default function Home() {
 
   function clearSession() {
     window.localStorage.removeItem(TOKEN_KEY);
-    setToken(""); setTokenInput(""); setCases([]); setError("");
+    setToken(""); setTokenInput(""); setCases([]); setDecisions([]); setAuditEvents([]); setView("queue"); setError("");
   }
 
   const highCount = cases.filter((item) => item.risk_band === "HIGH").length;
@@ -62,14 +79,14 @@ export default function Home() {
   return <main className="reviewShell">
     <aside className="sidebar">
       <div className="brand"><span>TS</span><div><strong>TradeSentry</strong><small>Officer review</small></div></div>
-      <nav aria-label="Primary navigation"><a className="active" href="#queue">Case queue <b>{cases.length}</b></a><a href="#decisions">My decisions</a><a href="#audit">Audit trail</a></nav>
+      <nav aria-label="Primary navigation"><button className={view === "queue" ? "active" : ""} onClick={() => void openView("queue", token)}>Case queue <b>{cases.length}</b></button><button disabled={!token} className={view === "decisions" ? "active" : ""} onClick={() => void openView("decisions", token)}>My decisions</button><button disabled={!token} className={view === "audit" ? "active" : ""} onClick={() => void openView("audit", token)}>Audit trail</button></nav>
       <div className="prototypeNote"><strong>Investigation support only</strong><p>Risk signals are not proof. Every consequential action requires human approval.</p></div>
     </aside>
     <section className="reviewMain">
       <header className="reviewHeader"><div><p className="eyebrow">GIFT City IBU · Secure workspace</p><h1>Human review queue</h1></div><div className="headerActions"><AwsBadge />{token ? <button className="sessionButton" onClick={clearSession}>End secure session</button> : <span className="secureState">JWT required</span>}</div></header>
-      <section className="queueHero" id="queue"><div><p className="kicker">Evidence-led decisions</p><h2>Cases requiring your judgment.</h2><p>Review the complete investigation record before approving, holding, escalating, or requesting more evidence.</p></div><div className="queueMetric"><strong>{cases.length}</strong><span>cases in your IBU</span><small>{highCount} high-risk {highCount === 1 ? "case" : "cases"}</small></div></section>
+      <section className="queueHero" id={view}><div><p className="kicker">{view === "queue" ? "Evidence-led decisions" : view === "decisions" ? "Officer accountability" : "Immutable activity record"}</p><h2>{view === "queue" ? "Cases requiring your judgment." : view === "decisions" ? "Your recorded decisions." : "Your secure audit trail."}</h2><p>{view === "queue" ? "Review the complete investigation record before approving, holding, escalating, or requesting more evidence." : view === "decisions" ? "Review the consequential decisions recorded under your authenticated officer identity." : "Inspect security and case activity attributed to your identity within your IBU."}</p></div><div className="queueMetric"><strong>{view === "queue" ? cases.length : view === "decisions" ? decisions.length : auditEvents.length}</strong><span>{view === "queue" ? "cases in your IBU" : view === "decisions" ? "recorded decisions" : "audit events"}</span>{view === "queue" && <small>{highCount} high-risk {highCount === 1 ? "case" : "cases"}</small>}</div></section>
       {!token && <form className="authPanel" onSubmit={saveSession}><div><p className="eyebrow">Authenticated access</p><h3>Start a secure officer session</h3><p>Paste the short-lived JWT issued by your identity provider. It is kept in this browser only.</p></div><label><span>Bearer token</span><input type="password" required value={tokenInput} onChange={(event) => setTokenInput(event.target.value)} autoComplete="off" placeholder="eyJhbGciOi…" /></label><button>Load my IBU cases</button></form>}
-      {token && <section className="queuePanel">
+      {token && view === "queue" && <section className="queuePanel">
         <div className="queueTools"><div><h3>Active cases</h3><span>Sorted by risk and age · tenant scoped by JWT</span></div><div className="filters"><input aria-label="Search cases" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Case ID or IBU" /><select aria-label="Risk filter" value={risk} onChange={(event) => setRisk(event.target.value as RiskFilter)}><option>ALL</option><option>HIGH</option><option>MEDIUM</option><option>LOW</option></select><select aria-label="Status filter" value={status} onChange={(event) => setStatus(event.target.value)}><option>ALL</option><option>HOLD</option><option>READY</option><option>PENDING</option><option>ESCALATED</option></select><input aria-label="Created from" type="date" value={createdFrom} onChange={(event) => setCreatedFrom(event.target.value)} /><button onClick={() => void refresh(token)}>{loading ? "Loading…" : "Refresh"}</button></div></div>
         {error && <p className="inlineError" role="alert">{error}</p>}
         <div className="caseTable" role="table" aria-label="Cases awaiting human review">
@@ -77,6 +94,16 @@ export default function Home() {
           {!loading && rows.length === 0 && <div className="emptyRow">No cases match this secure queue.</div>}
           {rows.map((item) => <div className="caseRow" role="row" key={item.case_id}><strong>{item.case_id}</strong><span>{item.ibu_id}</span><span>{item.applicant ?? "—"}</span><span>{item.beneficiary ?? "—"}</span><span>{item.amount ? `${item.currency ?? ""} ${item.amount}` : "—"}</span><span><i className={`riskDot ${(item.risk_band ?? "LOW").toLowerCase()}`} />{item.risk_band ?? "UNSCORED"}</span><span className="caseStatus">{item.status}</span><span>{new Date(item.created_at).toLocaleDateString()}</span><Link href={`/cases/${encodeURIComponent(item.case_id)}`}>Review <span>→</span></Link></div>)}
         </div>
+      </section>}
+      {token && view === "decisions" && <section className="queuePanel historyPanel">
+        <div className="queueTools"><div><h3>My decisions</h3><span>Newest first · scoped to your authenticated officer identity</span></div><button className="historyRefresh" onClick={() => void openView("decisions", token)}>{loading ? "Loading…" : "Refresh"}</button></div>
+        {error && <p className="inlineError" role="alert">{error}</p>}
+        {!loading && decisions.length === 0 ? <div className="emptyRow">You have not recorded any decisions.</div> : <div className="historyList">{decisions.map((item) => <article key={item.decision_id}><div><strong>{item.decision.replaceAll("_", " ")}</strong><span>{new Date(item.created_at).toLocaleString()}</span></div><p>{item.comment}</p><div className="historyMeta"><span>Officer: {item.officer_id}</span><Link href={`/cases/${encodeURIComponent(item.case_id)}`}>{item.case_id} →</Link></div></article>)}</div>}
+      </section>}
+      {token && view === "audit" && <section className="queuePanel historyPanel">
+        <div className="queueTools"><div><h3>Audit trail</h3><span>Events attributed to you · tenant scoped · newest first</span></div><button className="historyRefresh" onClick={() => void openView("audit", token)}>{loading ? "Loading…" : "Refresh"}</button></div>
+        {error && <p className="inlineError" role="alert">{error}</p>}
+        {!loading && auditEvents.length === 0 ? <div className="emptyRow">No audit activity is recorded for this identity.</div> : <div className="auditTable" role="table" aria-label="My audit trail"><div className="auditRow auditHead" role="row"><span>Event</span><span>Case</span><span>Role</span><span>Time</span></div>{auditEvents.map((item) => <div className="auditRow" role="row" key={item.event_id}><strong>{item.event_type.replaceAll("_", " ")}</strong><span>{item.case_id ?? "System"}</span><span>{item.actor_role}</span><span>{new Date(item.created_at).toLocaleString()}</span></div>)}</div>}
       </section>}
       <footer>Prototype · Synthetic evidence only · No settlement execution</footer>
     </section>

@@ -46,6 +46,18 @@ export type OfficerDecision = {
   created_at: string;
 };
 
+export type AuditEvent = {
+  event_id: string;
+  correlation_id: string;
+  case_id: string | null;
+  ibu_id: string;
+  actor_id: string;
+  actor_role: string;
+  event_type: string;
+  payload_ref: string;
+  created_at: string;
+};
+
 export type CaseReport = {
   case: DashboardCase;
   sections: Record<string, unknown>;
@@ -67,6 +79,14 @@ function auth(token: string): HeadersInit {
 
 export async function getCases(token: string): Promise<DashboardCase[]> {
   return json(await fetch(`${API_URL}/cases`, { headers: auth(token), cache: "no-store" }));
+}
+
+export async function getMyDecisions(token: string): Promise<OfficerDecision[]> {
+  return json(await fetch(`${API_URL}/cases/decisions/me`, { headers: auth(token), cache: "no-store" }));
+}
+
+export async function getMyAuditEvents(token: string): Promise<AuditEvent[]> {
+  return json(await fetch(`${API_URL}/audit-events/me`, { headers: auth(token), cache: "no-store" }));
 }
 
 export async function getReport(token: string, caseId: string): Promise<CaseReport> {

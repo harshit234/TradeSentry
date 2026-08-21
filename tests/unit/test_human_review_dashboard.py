@@ -178,3 +178,44 @@ def test_each_officer_decision_creates_an_audit_event(
         assert response.status_code == 201
     after = asyncio.run(services.audit_store.count("OFFICER_DECISION"))
     assert after - before == 2
+
+
+def test_my_decisions_only_returns_current_officers_ibu_scoped_history(
+    dashboard: tuple[TestClient, Services],
+) -> None:
+    client, services = dashboard
+    add_case(services, "CASE-MINE")
+    add_case(services, "CASE-OTHER-IBU", "IBU-B")
+    mine = client.post(
+        "/cases/CASE-MINE/review",
+        headers=review_header(key="my-decisions-visible"),
+        json={"decision": "HOLD", "comment": "Evidence requires additional review."},
+    )
+    other = client.post(
+        "/cases/CASE-OTHER-IBU/review",
+        headers={**auth_header(ibu_id="IBU-B"), "Idempotency-Key": "other-ibu-decision"},
+        json={"decision": "HOLD", "comment": "Separate tenant evidence review."},
+    )
+    assert mine.status_code == 201
+    assert other.status_code == 201
+    response = client.get("/cases/decisions/me", headers=auth_header())
+    assert response.status_code == 200
+    assert [item["case_id"] for item in response.json()] == ["CASE-MINE"]
+
+
+def test_officer_can_view_only_their_own_audit_trail(
+    dashboard: tuple[TestClient, Services],
+) -> None:
+    client, services = dashboard
+    add_case(services, "CASE-MY-AUDIT")
+    client.post(
+        "/cases/CASE-MY-AUDIT/review",
+        headers=review_header(key="my-audit-visible"),
+        json={"decision": "HOLD", "comment": "Evidence requires additional review."},
+    )
+    response = client.get("/audit-events/me", headers=auth_header())
+    assert response.status_code == 200
+    events = response.json()
+    assert events
+    assert all(item["actor_id"] == "test-officer-001" for item in events)
+    assert all(item["ibu_id"] == "IBU-A" for item in events)
