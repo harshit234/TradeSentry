@@ -28,7 +28,7 @@ CASES = {
     "A": ("DEMO-CASE-A", "IBU-A", "case_a_clean"),
     "B": ("DEMO-CASE-B", "IBU-B", "case_b_duplicate"),
     "C": ("DEMO-CASE-C", "IBU-A", "case_c_tbml"),
-    "D": ("DEMO-CASE-D", "IBU-B", "case_d_legit"),
+    "D": ("DEMO-CASE-D", "IBU-C", "case_d_legit"),
 }
 
 

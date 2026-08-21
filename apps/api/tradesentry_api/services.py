@@ -4,12 +4,18 @@ from typing import Protocol
 import boto3  # type: ignore[import-untyped]
 from botocore.exceptions import ClientError  # type: ignore[import-untyped]
 
+from .audit_store import AuditStore, InMemoryAuditStore, PostgresAuditStore
 from .compliance_store import (
     ComplianceStore,
     InMemoryComplianceStore,
     PostgresComplianceStore,
 )
 from .config import Settings
+from .cross_ibu_registry import (
+    CrossIBURegistry,
+    DynamoDBCrossIBURegistry,
+    InMemoryCrossIBURegistry,
+)
 from .db import Database, InMemoryDatabase
 from .dna_store import (
     InMemoryTransactionDNAStore,
@@ -80,6 +86,8 @@ class Services:
     settings: Settings
     compliance_store: ComplianceStore
     dna_store: TransactionDNAStore
+    cross_ibu_registry: CrossIBURegistry
+    audit_store: AuditStore
 
     @classmethod
     def build(cls, settings: Settings) -> "Services":
@@ -102,6 +110,12 @@ class Services:
             redis = RedisCache(settings.redis_url)
             compliance_store: ComplianceStore = PostgresComplianceStore(database)
             dna_store: TransactionDNAStore = PostgresTransactionDNAStore(database)
+            cross_ibu_registry: CrossIBURegistry = DynamoDBCrossIBURegistry(
+                settings.cross_ibu_table_name,
+                settings.aws_region,
+                settings.dynamodb_endpoint_url,
+            )
+            audit_store: AuditStore = PostgresAuditStore(database)
         else:
             database = InMemoryDatabase()
             storage = InMemoryStorage()
@@ -110,6 +124,8 @@ class Services:
             redis = InMemoryRedis()
             compliance_store = InMemoryComplianceStore()
             dna_store = InMemoryTransactionDNAStore()
+            cross_ibu_registry = InMemoryCrossIBURegistry()
+            audit_store = InMemoryAuditStore()
         ocr: OCRProvider = (
             TextractOCRProvider(
                 settings.aws_region,
@@ -136,6 +152,8 @@ class Services:
             settings,
             compliance_store,
             dna_store,
+            cross_ibu_registry,
+            audit_store,
         )
 
     async def close(self) -> None:

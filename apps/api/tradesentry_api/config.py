@@ -18,6 +18,8 @@ class Settings(BaseModel):
     s3_endpoint_url: str | None = "http://localhost:4566"
     s3_public_endpoint_url: str | None = None
     textract_endpoint_url: str | None = None
+    dynamodb_endpoint_url: str | None = None
+    cross_ibu_table_name: str = "TradeFinanceRegistry"
     s3_kms_key_id: str = "alias/tradesentry-local"
     service_check_mode: str = "stub"
     ocr_mode: str = "stub"
@@ -44,6 +46,8 @@ class Settings(BaseModel):
             s3_endpoint_url=os.getenv("S3_ENDPOINT_URL", "http://localhost:4566"),
             s3_public_endpoint_url=os.getenv("S3_PUBLIC_ENDPOINT_URL"),
             textract_endpoint_url=os.getenv("TEXTRACT_ENDPOINT_URL"),
+            dynamodb_endpoint_url=os.getenv("DYNAMODB_ENDPOINT_URL"),
+            cross_ibu_table_name=os.getenv("CROSS_IBU_TABLE_NAME", "TradeFinanceRegistry"),
             s3_kms_key_id=os.getenv("S3_KMS_KEY_ID", "alias/tradesentry-local"),
             service_check_mode=os.getenv("SERVICE_CHECK_MODE", "stub"),
             ocr_mode=os.getenv("OCR_MODE", "stub"),

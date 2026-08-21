@@ -11,6 +11,7 @@ from models.contracts import HealthResponse
 from .api import router as document_router
 from .compliance_api import router as compliance_router
 from .config import Settings
+from .cross_ibu_api import router as cross_ibu_router
 from .dna_api import router as dna_router
 from .errors import install_exception_handlers
 from .logging import configure_logging, correlation_id_var
@@ -32,7 +33,13 @@ def create_app(settings: Settings | None = None, services: Services | None = Non
         CORSMiddleware,
         allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
         allow_methods=["GET", "POST", "OPTIONS"],
-        allow_headers=["Content-Type", "X-Correlation-ID", "X-Uploaded-By"],
+        allow_headers=[
+            "Content-Type",
+            "X-Correlation-ID",
+            "X-Uploaded-By",
+            "X-IBU-ID",
+            "X-Admin-Debug",
+        ],
     )
 
     @app.middleware("http")
@@ -82,6 +89,7 @@ def create_app(settings: Settings | None = None, services: Services | None = Non
     app.include_router(document_router)
     app.include_router(compliance_router)
     app.include_router(dna_router)
+    app.include_router(cross_ibu_router)
     return app
 
 

@@ -1,0 +1,16 @@
+{
+  "weights": {
+    "bl_number_normalized": "1.00",
+    "voyage_normalized": "0.25",
+    "vessel_normalized": "0.20",
+    "exporter_normalized": "0.20",
+    "shipment_date_iso": "0.15",
+    "loading_port_unlocode": "0.10",
+    "discharge_port_unlocode": "0.10"
+  },
+  "likely_duplicate_threshold": "0.95",
+  "possible_match_threshold": "0.85",
+  "date_near_days": 7,
+  "ttl_days": 90,
+  "simulated_ibus": ["IBU-A", "IBU-B", "IBU-C"]
+}
