@@ -3,6 +3,7 @@ param(
   [string]$Region = "ap-south-1"
 )
 $ErrorActionPreference = "Stop"
+$PSNativeCommandUseErrorActionPreference = $true
 $cluster = (terraform -chdir=infra/aws output -raw ecs_cluster_name).Trim()
 foreach ($service in @("tradesentry-api", "tradesentry-web")) {
   $family = $service

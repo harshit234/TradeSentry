@@ -3,6 +3,7 @@ param(
   [string]$Region = "ap-south-1"
 )
 $ErrorActionPreference = "Stop"
+$PSNativeCommandUseErrorActionPreference = $true
 foreach ($command in @("aws", "docker", "terraform")) {
   if (-not (Get-Command $command -ErrorAction SilentlyContinue)) {
     throw "$command is required for staging deployment"

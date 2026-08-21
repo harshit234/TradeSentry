@@ -557,7 +557,7 @@ resource "aws_ecs_service" "api" {
     container_port   = 8000
   }
   health_check_grace_period_seconds = 60
-  depends_on                        = [aws_lb_listener.http]
+  depends_on                        = [aws_lb_listener_rule.api]
 }
 
 resource "aws_ecs_service" "web" {
@@ -636,7 +636,21 @@ resource "aws_lb_listener_rule" "api" {
   }
   condition {
     path_pattern {
-      values = ["/health", "/cases*", "/cross-ibu*", "/audit-events*", "/docs*", "/openapi.json"]
+      values = ["/health", "/cases*", "/cross-ibu*", "/audit-events*"]
+    }
+  }
+}
+
+resource "aws_lb_listener_rule" "api_docs" {
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 11
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.api.arn
+  }
+  condition {
+    path_pattern {
+      values = ["/docs*", "/openapi.json"]
     }
   }
 }
@@ -729,7 +743,7 @@ resource "aws_cloudwatch_metric_alarm" "error_rate" {
   }
   metric_query {
     id          = "rate"
-    expression  = "100 * errors / MAX([requests, 1])"
+    expression  = "IF(requests > 0, 100 * errors / requests, 0)"
     label       = "ErrorPercent"
     return_data = true
   }

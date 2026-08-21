@@ -4,6 +4,7 @@ param(
   [ValidateSet("IBU-A", "IBU-B", "IBU-C")][string]$IbuId = "IBU-A"
 )
 $ErrorActionPreference = "Stop"
+$PSNativeCommandUseErrorActionPreference = $true
 $credentials = aws configure export-credentials --profile $Profile --format process | ConvertFrom-Json
 $env:AWS_ACCESS_KEY_ID = $credentials.AccessKeyId
 $env:AWS_SECRET_ACCESS_KEY = $credentials.SecretAccessKey

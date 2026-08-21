@@ -3,6 +3,7 @@ param(
   [string]$Region = "ap-south-1"
 )
 $ErrorActionPreference = "Stop"
+$PSNativeCommandUseErrorActionPreference = $true
 $stagingUrl = terraform -chdir=infra/aws output -raw staging_url
 $health = Invoke-RestMethod -Uri "$stagingUrl/health" -TimeoutSec 20
 $required = @("db", "redis", "s3", "textract", "dynamodb")
