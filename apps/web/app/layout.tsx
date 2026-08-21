@@ -1,0 +1,15 @@
+import type { Metadata } from "next";
+import "./styles.css";
+
+export const metadata: Metadata = {
+  title: "TradeSentry | Trade Finance Intelligence",
+  description: "Human-authorized pre-settlement intelligence for simulated GIFT City IBUs.",
+};
+
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  return (
+    <html lang="en">
+      <body>{children}</body>
+    </html>
+  );
+}
