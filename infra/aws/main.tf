@@ -374,7 +374,7 @@ resource "aws_iam_role_policy" "ecs_task" {
     },
     {
       Sid    = "DocumentBucketVersioning", Effect = "Allow",
-      Action = ["s3:GetBucketVersioning"], Resource = [aws_s3_bucket.documents.arn]
+      Action = ["s3:GetBucketVersioning", "s3:ListBucket"], Resource = [aws_s3_bucket.documents.arn]
     },
     {
       # Textract does not support resource-level IAM permissions.
