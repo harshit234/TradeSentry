@@ -90,6 +90,7 @@ class CaseRecord:
     id: str
     ibu_id: str
     status: str = "CREATED"
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 @dataclass(slots=True)

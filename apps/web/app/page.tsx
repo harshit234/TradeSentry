@@ -1,62 +1,83 @@
 "use client";
 
-import { ChangeEvent, DragEvent, useCallback, useEffect, useState } from "react";
-import { Completeness, DocumentItem, createCase, getCompleteness, getDocument, getDocuments, uploadDocument } from "../lib/api";
+import Link from "next/link";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { DashboardCase, getCases, TOKEN_KEY } from "../lib/api";
 
-const CASES = ["DEMO-CASE-A", "DEMO-CASE-B", "DEMO-CASE-C", "DEMO-CASE-D"];
-const TYPE_LABELS: Record<string, string> = { letter_of_credit:"Letter of Credit", commercial_invoice:"Commercial Invoice", bill_of_lading:"Bill of Lading", packing_list:"Packing List", certificate_of_origin:"Certificate of Origin", insurance_certificate:"Insurance Certificate", inspection_certificate:"Inspection Certificate", unknown:"Unclassified" };
-const VALID_TYPES = ["application/pdf", "image/tiff", "image/jpeg"];
-const MAX_BYTES = 50 * 1024 * 1024;
+type RiskFilter = "ALL" | "HIGH" | "MEDIUM" | "LOW";
 
 export default function Home() {
-  const [caseId, setCaseId] = useState(CASES[0]);
-  const [documents, setDocuments] = useState<DocumentItem[]>([]);
-  const [completeness, setCompleteness] = useState<Completeness | null>(null);
+  const [token, setToken] = useState("");
+  const [tokenInput, setTokenInput] = useState("");
+  const [cases, setCases] = useState<DashboardCase[]>([]);
+  const [query, setQuery] = useState("");
+  const [risk, setRisk] = useState<RiskFilter>("ALL");
+  const [status, setStatus] = useState("ALL");
+  const [createdFrom, setCreatedFrom] = useState("");
   const [error, setError] = useState("");
-  const [uploading, setUploading] = useState(false);
-  const [selected, setSelected] = useState<DocumentItem | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  const refresh = useCallback(async () => {
-    try {
-      await createCase(caseId, "IBU-A");
-      const [nextDocuments, nextCompleteness] = await Promise.all([getDocuments(caseId), getCompleteness(caseId)]);
-      setDocuments(nextDocuments); setCompleteness(nextCompleteness);
-    } catch { setError("The document service is unavailable. Start the local stack and retry."); }
-  }, [caseId]);
+  const refresh = useCallback(async (activeToken: string) => {
+    setLoading(true);
+    setError("");
+    try { setCases(await getCases(activeToken)); }
+    catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Unable to load cases"); }
+    finally { setLoading(false); }
+  }, []);
 
-  useEffect(() => { void refresh(); const timer = window.setInterval(() => void refresh(), 2500); return () => window.clearInterval(timer); }, [refresh]);
+  useEffect(() => {
+    const saved = window.localStorage.getItem(TOKEN_KEY) ?? "";
+    setToken(saved);
+    setTokenInput(saved);
+    if (saved) void refresh(saved);
+  }, [refresh]);
 
-  async function acceptFiles(files: FileList | File[]) {
-    setError(""); const items = Array.from(files);
-    const invalid = items.find((file) => !VALID_TYPES.includes(file.type) || file.size > MAX_BYTES);
-    if (invalid) { setError(invalid.size > MAX_BYTES ? `${invalid.name} exceeds 50 MB.` : `${invalid.name} is not a PDF, TIFF, or JPEG.`); return; }
-    setUploading(true);
-    try { for (const file of items) await uploadDocument(caseId, file); await refresh(); }
-    catch (uploadError) { setError(uploadError instanceof Error ? uploadError.message : "Upload failed."); }
-    finally { setUploading(false); }
+  const rows = useMemo(() => cases.filter((item) => {
+    const matchesQuery = `${item.case_id} ${item.ibu_id}`.toLowerCase().includes(query.toLowerCase());
+    const matchesRisk = risk === "ALL" || item.risk_band === risk;
+    const matchesStatus = status === "ALL" || item.status.toUpperCase().includes(status);
+    const matchesDate = !createdFrom || new Date(item.created_at) >= new Date(createdFrom);
+    return matchesQuery && matchesRisk && matchesStatus && matchesDate;
+  }).sort((left, right) => {
+    const rank = { HIGH: 3, MEDIUM: 2, LOW: 1 };
+    return (rank[right.risk_band ?? "LOW"] - rank[left.risk_band ?? "LOW"]) || right.created_at.localeCompare(left.created_at);
+  }), [cases, createdFrom, query, risk, status]);
+
+  function saveSession(event: FormEvent) {
+    event.preventDefault();
+    const next = tokenInput.trim().replace(/^Bearer\s+/i, "");
+    window.localStorage.setItem(TOKEN_KEY, next);
+    setToken(next);
+    void refresh(next);
   }
 
-  function onDrop(event: DragEvent<HTMLLabelElement>) { event.preventDefault(); void acceptFiles(event.dataTransfer.files); }
-  function onChoose(event: ChangeEvent<HTMLInputElement>) { if (event.target.files) void acceptFiles(event.target.files); event.target.value = ""; }
-  async function viewDocument(document: DocumentItem) { setSelected(await getDocument(caseId, document.document_id)); }
+  function clearSession() {
+    window.localStorage.removeItem(TOKEN_KEY);
+    setToken(""); setTokenInput(""); setCases([]); setError("");
+  }
 
-  return <main>
-    <header className="topbar"><div><p className="eyebrow">GIFT City IBU intelligence</p><h1>TradeSentry</h1></div><div className="casePicker"><label htmlFor="case">Active case</label><select id="case" value={caseId} onChange={(event) => setCaseId(event.target.value)}>{CASES.map((item) => <option key={item}>{item}</option>)}</select></div></header>
-    <section className="intro"><div><p className="kicker">Document intelligence</p><h2>Evidence begins with the document.</h2></div><p>Upload synthetic trade documents for classification, extraction, confidence scoring, and page-linked review.</p></section>
-    <div className="workspace">
-      <section className="panel documentsPanel">
-        <div className="sectionHeading"><div><p className="eyebrow">Case file</p><h2>Documents</h2></div><span>{documents.length} uploaded</span></div>
-        <label className={`dropzone ${uploading ? "busy" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={onDrop}><input type="file" multiple accept=".pdf,.tif,.tiff,.jpg,.jpeg" onChange={onChoose} disabled={uploading}/><span className="uploadIcon">↑</span><strong>{uploading ? "Uploading securely…" : "Drag & drop trade documents here"}</strong><small>or click to browse · PDF, TIFF, JPEG · max 50 MB</small></label>
+  const highCount = cases.filter((item) => item.risk_band === "HIGH").length;
+
+  return <main className="reviewShell">
+    <aside className="sidebar">
+      <div className="brand"><span>TS</span><div><strong>TradeSentry</strong><small>Officer review</small></div></div>
+      <nav aria-label="Primary navigation"><a className="active" href="#queue">Case queue <b>{cases.length}</b></a><a href="#decisions">My decisions</a><a href="#audit">Audit trail</a></nav>
+      <div className="prototypeNote"><strong>Investigation support only</strong><p>Risk signals are not proof. Every consequential action requires human approval.</p></div>
+    </aside>
+    <section className="reviewMain">
+      <header className="reviewHeader"><div><p className="eyebrow">GIFT City IBU · Secure workspace</p><h1>Human review queue</h1></div>{token ? <button className="sessionButton" onClick={clearSession}>End secure session</button> : <span className="secureState">JWT required</span>}</header>
+      <section className="queueHero" id="queue"><div><p className="kicker">Evidence-led decisions</p><h2>Cases requiring your judgment.</h2><p>Review the complete investigation record before approving, holding, escalating, or requesting more evidence.</p></div><div className="queueMetric"><strong>{cases.length}</strong><span>cases in your IBU</span><small>{highCount} high-risk {highCount === 1 ? "case" : "cases"}</small></div></section>
+      {!token && <form className="authPanel" onSubmit={saveSession}><div><p className="eyebrow">Authenticated access</p><h3>Start a secure officer session</h3><p>Paste the short-lived JWT issued by your identity provider. It is kept in this browser only.</p></div><label><span>Bearer token</span><input type="password" required value={tokenInput} onChange={(event) => setTokenInput(event.target.value)} autoComplete="off" placeholder="eyJhbGciOi…" /></label><button>Load my IBU cases</button></form>}
+      {token && <section className="queuePanel">
+        <div className="queueTools"><div><h3>Active cases</h3><span>Sorted by risk and age · tenant scoped by JWT</span></div><div className="filters"><input aria-label="Search cases" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Case ID or IBU" /><select aria-label="Risk filter" value={risk} onChange={(event) => setRisk(event.target.value as RiskFilter)}><option>ALL</option><option>HIGH</option><option>MEDIUM</option><option>LOW</option></select><select aria-label="Status filter" value={status} onChange={(event) => setStatus(event.target.value)}><option>ALL</option><option>HOLD</option><option>READY</option><option>PENDING</option><option>ESCALATED</option></select><input aria-label="Created from" type="date" value={createdFrom} onChange={(event) => setCreatedFrom(event.target.value)} /><button onClick={() => void refresh(token)}>{loading ? "Loading…" : "Refresh"}</button></div></div>
         {error && <p className="inlineError" role="alert">{error}</p>}
-        <div className="documentTable" role="table" aria-label="Case documents">
-          <div className="documentHeader" role="row"><span>File</span><span>Type</span><span>Status</span><span>Confidence</span></div>
-          {documents.length === 0 && <div className="emptyRow">No documents yet. Upload files or run <code>make seed-demo</code>.</div>}
-          {documents.map((document) => { const confidence = Math.round((document.overall_confidence ?? 0) * 100); return <div className="documentRow" role="row" key={document.document_id}><div><strong>{document.filename}</strong>{document.advisory && <small>{document.advisory}</small>}</div><span className="typeBadge">{TYPE_LABELS[document.document_type]}</span><span className={`status status-${document.status.toLowerCase()}`}><i/>{document.status}</span><div className="confidenceCell">{document.overall_confidence == null ? <span className="muted">—</span> : <><div className="bar"><i style={{width:`${confidence}%`}}/></div><b>{confidence}%</b></>}<button className="textButton" onClick={() => void viewDocument(document)}>View</button></div></div>; })}
+        <div className="caseTable" role="table" aria-label="Cases awaiting human review">
+          <div className="caseRow caseHead" role="row"><span>Case</span><span>IBU</span><span>Applicant</span><span>Beneficiary</span><span>Amount</span><span>Risk</span><span>Status</span><span>Created</span><span /></div>
+          {!loading && rows.length === 0 && <div className="emptyRow">No cases match this secure queue.</div>}
+          {rows.map((item) => <div className="caseRow" role="row" key={item.case_id}><strong>{item.case_id}</strong><span>{item.ibu_id}</span><span>{item.applicant ?? "—"}</span><span>{item.beneficiary ?? "—"}</span><span>{item.amount ? `${item.currency ?? ""} ${item.amount}` : "—"}</span><span><i className={`riskDot ${(item.risk_band ?? "LOW").toLowerCase()}`} />{item.risk_band ?? "UNSCORED"}</span><span className="caseStatus">{item.status}</span><span>{new Date(item.created_at).toLocaleDateString()}</span><Link href={`/cases/${encodeURIComponent(item.case_id)}`}>Review <span>→</span></Link></div>)}
         </div>
-      </section>
-      <aside className="panel completenessPanel"><p className="eyebrow">Readiness</p><h2>Completeness</h2><p className="panelCopy">Every document required by the LC must be extracted before investigation can begin.</p><div className="tracker">{(completeness?.required_types ?? []).map((type) => { const present = completeness?.present_types.includes(type); return <div key={type} className={present ? "present" : "missing"}><span>{present ? "✓" : "×"}</span>{TYPE_LABELS[type]}</div>; })}{completeness?.status === "PENDING_LC" && <div className="pending"><span>…</span>Upload Letter of Credit first</div>}</div><div className={`readiness ${completeness?.status.toLowerCase() ?? "pending_lc"}`}><span>{completeness?.status ?? "PENDING_LC"}</span><strong>{completeness?.missing_types.length ?? 0} missing</strong></div><button className="runButton" disabled={!completeness?.can_run_investigation} title="Investigation execution is introduced in the next sprint">Run Investigation</button><small className="humanNote">Human review remains required for every consequential action.</small></aside>
-    </div>
-    {selected && <div className="modalBackdrop" onClick={() => setSelected(null)}><article className="modal" onClick={(event) => event.stopPropagation()}><button className="close" onClick={() => setSelected(null)}>×</button><p className="eyebrow">Extracted evidence</p><h2>{selected.filename}</h2><div className="fieldGrid">{Object.entries((selected.extraction?.fields ?? {}) as Record<string, unknown>).map(([name,value]) => <div key={name}><span>{name.replaceAll("_"," ")}</span><strong>{typeof value === "object" ? JSON.stringify(value) : String(value ?? "—")}</strong><small>Page {selected.extraction?.page_refs[name]?.join(", ") ?? "—"}</small></div>)}</div>{selected.view_url && <a className="viewOriginal" href={selected.view_url} target="_blank" rel="noreferrer">Open original PDF ↗</a>}</article></div>}
-    <footer>Prototype only · Synthetic data · No settlement execution</footer>
+      </section>}
+      <footer>Prototype · Synthetic evidence only · No settlement execution</footer>
+    </section>
   </main>;
 }

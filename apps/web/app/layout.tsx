@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import "./styles.css";
+import "./review.css";
+import "./table.css";
 
 export const metadata: Metadata = {
   title: "TradeSentry | Trade Finance Intelligence",

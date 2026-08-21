@@ -36,6 +36,8 @@ FIELD_SCHEMA_BY_TYPE: dict[DocumentType, type[BaseModel]] = {
 class DocumentRepository(Protocol):
     async def create_case(self, case: CaseRecord) -> CaseRecord: ...
     async def get_case(self, case_id: str) -> CaseRecord | None: ...
+    async def list_cases(self) -> list[CaseRecord]: ...
+    async def update_case_status(self, case_id: str, status: str) -> None: ...
     async def delete_case(self, case_id: str) -> None: ...
     async def save_document(self, document: DocumentRecord) -> DocumentRecord: ...
     async def get_document(self, case_id: str, document_id: str) -> DocumentRecord | None: ...
@@ -57,6 +59,14 @@ class InMemoryDocumentRepository:
 
     async def get_case(self, case_id: str) -> CaseRecord | None:
         return self.cases.get(case_id)
+
+    async def list_cases(self) -> list[CaseRecord]:
+        return sorted(self.cases.values(), key=lambda case: case.created_at, reverse=True)
+
+    async def update_case_status(self, case_id: str, status: str) -> None:
+        case = self.cases.get(case_id)
+        if case is not None:
+            case.status = status
 
     async def delete_case(self, case_id: str) -> None:
         self.cases.pop(case_id, None)
@@ -109,13 +119,46 @@ class PostgresDocumentRepository:
             row = (
                 (
                     await connection.execute(
-                        text("SELECT id, ibu_id, status FROM cases WHERE id=:id"), {"id": case_id}
+                        text("SELECT id, ibu_id, status, created_at FROM cases WHERE id=:id"),
+                        {"id": case_id},
                     )
                 )
                 .mappings()
                 .first()
             )
-        return CaseRecord(id=row["id"], ibu_id=row["ibu_id"], status=row["status"]) if row else None
+        return (
+            CaseRecord(
+                id=row["id"], ibu_id=row["ibu_id"], status=row["status"],
+                created_at=row["created_at"],
+            )
+            if row else None
+        )
+
+    async def list_cases(self) -> list[CaseRecord]:
+        async with self.database.engine.connect() as connection:
+            rows = (
+                (
+                    await connection.execute(
+                        text("SELECT id, ibu_id, status, created_at FROM cases ORDER BY created_at DESC")
+                    )
+                )
+                .mappings()
+                .all()
+            )
+        return [
+            CaseRecord(
+                id=row["id"], ibu_id=row["ibu_id"], status=row["status"],
+                created_at=row["created_at"],
+            )
+            for row in rows
+        ]
+
+    async def update_case_status(self, case_id: str, status: str) -> None:
+        async with self.database.engine.begin() as connection:
+            await connection.execute(
+                text("UPDATE cases SET status=:status, updated_at=now() WHERE id=:case_id"),
+                {"status": status, "case_id": case_id},
+            )
 
     async def delete_case(self, case_id: str) -> None:
         async with self.database.engine.begin() as connection:

@@ -32,6 +32,9 @@ class Settings(BaseModel):
     investigation_tool_budget: int = Field(default=12, ge=0, le=12)
     price_triage_threshold_usd: float = Field(default=700.0, gt=0)
     bedrock_model_id: str | None = None
+    jwt_secret: str = "local-demo-only-change-me-32-bytes!"
+    jwt_issuer: str = "tradesentry"
+    jwt_audience: str = "tradesentry-dashboard"
     log_level: str = "INFO"
 
     @classmethod
@@ -69,5 +72,8 @@ class Settings(BaseModel):
                 os.getenv("PRICE_TRIAGE_THRESHOLD_USD", "700")
             ),
             bedrock_model_id=os.getenv("BEDROCK_MODEL_ID"),
+            jwt_secret=os.getenv("JWT_SECRET", "local-demo-only-change-me-32-bytes!"),
+            jwt_issuer=os.getenv("JWT_ISSUER", "tradesentry"),
+            jwt_audience=os.getenv("JWT_AUDIENCE", "tradesentry-dashboard"),
             log_level=os.getenv("LOG_LEVEL", "INFO"),
         )

@@ -12,6 +12,7 @@ from .api import router as document_router
 from .compliance_api import router as compliance_router
 from .config import Settings
 from .cross_ibu_api import router as cross_ibu_router
+from .dashboard_api import router as dashboard_router
 from .dna_api import router as dna_router
 from .errors import install_exception_handlers
 from .investigation_api import router as investigation_router
@@ -40,6 +41,7 @@ def create_app(settings: Settings | None = None, services: Services | None = Non
             "X-Uploaded-By",
             "X-IBU-ID",
             "X-Admin-Debug",
+            "Authorization",
         ],
     )
 
@@ -92,6 +94,7 @@ def create_app(settings: Settings | None = None, services: Services | None = Non
     app.include_router(dna_router)
     app.include_router(cross_ibu_router)
     app.include_router(investigation_router)
+    app.include_router(dashboard_router)
     return app
 
 

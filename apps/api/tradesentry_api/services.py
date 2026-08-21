@@ -50,6 +50,7 @@ from .repository import (
     InMemoryDocumentRepository,
     PostgresDocumentRepository,
 )
+from .review_store import InMemoryReviewStore, PostgresReviewStore, ReviewStore
 from .s3 import InMemoryStorage, S3Storage, Storage
 
 
@@ -103,6 +104,7 @@ class Services:
     audit_store: AuditStore
     fraud_tbml_runner: FraudTBMLToolRunner
     investigation_store: InvestigationStore
+    review_store: ReviewStore
 
     @classmethod
     def build(cls, settings: Settings) -> "Services":
@@ -132,6 +134,7 @@ class Services:
             )
             audit_store: AuditStore = PostgresAuditStore(database)
             investigation_store: InvestigationStore = PostgresInvestigationStore(database)
+            review_store: ReviewStore = PostgresReviewStore(database)
         else:
             database = InMemoryDatabase()
             storage = InMemoryStorage()
@@ -143,6 +146,7 @@ class Services:
             cross_ibu_registry = InMemoryCrossIBURegistry()
             audit_store = InMemoryAuditStore()
             investigation_store = InMemoryInvestigationStore()
+            review_store = InMemoryReviewStore()
         ocr: OCRProvider = (
             TextractOCRProvider(
                 settings.aws_region,
@@ -182,6 +186,7 @@ class Services:
             audit_store,
             fraud_tbml_runner,
             investigation_store,
+            review_store,
         )
 
     async def close(self) -> None:
