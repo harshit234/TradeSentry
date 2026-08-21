@@ -21,10 +21,11 @@ requires = ["setuptools>=75"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["models", "rules"]
+packages = ["models", "rules", "dna"]
 
 [tool.setuptools.package-data]
 rules = ["config/*.json"]
+dna = ["config/*.json"]
 
 
 [project.optional-dependencies]
@@ -48,5 +49,5 @@ target-version = "py311"
 [tool.mypy]
 python_version = "3.11"
 strict = true
-packages = ["tradesentry_api", "models"]
+packages = ["tradesentry_api", "models", "dna"]
 mypy_path = "apps/api"

@@ -11,6 +11,11 @@ from .compliance_store import (
 )
 from .config import Settings
 from .db import Database, InMemoryDatabase
+from .dna_store import (
+    InMemoryTransactionDNAStore,
+    PostgresTransactionDNAStore,
+    TransactionDNAStore,
+)
 from .ocr import (
     BedrockLLMFallback,
     LLMFallback,
@@ -74,6 +79,7 @@ class Services:
     processor: DocumentProcessor
     settings: Settings
     compliance_store: ComplianceStore
+    dna_store: TransactionDNAStore
 
     @classmethod
     def build(cls, settings: Settings) -> "Services":
@@ -95,6 +101,7 @@ class Services:
             textract = TextractCheck(settings.aws_region, settings.textract_endpoint_url)
             redis = RedisCache(settings.redis_url)
             compliance_store: ComplianceStore = PostgresComplianceStore(database)
+            dna_store: TransactionDNAStore = PostgresTransactionDNAStore(database)
         else:
             database = InMemoryDatabase()
             storage = InMemoryStorage()
@@ -102,6 +109,7 @@ class Services:
             textract = StubCheck()
             redis = InMemoryRedis()
             compliance_store = InMemoryComplianceStore()
+            dna_store = InMemoryTransactionDNAStore()
         ocr: OCRProvider = (
             TextractOCRProvider(
                 settings.aws_region,
@@ -127,6 +135,7 @@ class Services:
             processor,
             settings,
             compliance_store,
+            dna_store,
         )
 
     async def close(self) -> None:

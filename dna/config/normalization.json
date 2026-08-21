@@ -1,0 +1,17 @@
+{
+  "legal_suffixes": ["ltd", "limited", "pvt", "private", "inc", "incorporated", "corp", "corporation", "llc", "pte", "co", "company"],
+  "port_aliases": {
+    "jnpt": "INNSA",
+    "jawaharlal nehru port": "INNSA",
+    "nhava sheva": "INNSA",
+    "nhava sheva india": "INNSA",
+    "mundra": "INMUN",
+    "mundra india": "INMUN",
+    "singapore": "SGSIN",
+    "singapore singapore": "SGSIN",
+    "colombo": "LKCMB",
+    "colombo sri lanka": "LKCMB"
+  },
+  "currency_to_usd": {"USD": "1"},
+  "advisory_similarity_threshold": "0.82"
+}

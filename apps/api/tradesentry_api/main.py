@@ -11,6 +11,7 @@ from models.contracts import HealthResponse
 from .api import router as document_router
 from .compliance_api import router as compliance_router
 from .config import Settings
+from .dna_api import router as dna_router
 from .errors import install_exception_handlers
 from .logging import configure_logging, correlation_id_var
 from .services import Checkable, Services
@@ -80,6 +81,7 @@ def create_app(settings: Settings | None = None, services: Services | None = Non
     install_exception_handlers(app)
     app.include_router(document_router)
     app.include_router(compliance_router)
+    app.include_router(dna_router)
     return app
 
 
