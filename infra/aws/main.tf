@@ -511,6 +511,7 @@ resource "aws_ecs_task_definition" "api" {
   requires_compatibilities = ["FARGATE"]
   cpu                      = 1024
   memory                   = 2048
+  skip_destroy             = true
   task_role_arn            = aws_iam_role.ecs_task.arn
   execution_role_arn       = aws_iam_role.ecs_execution.arn
   container_definitions = jsonencode([{ name = "api", image = "${aws_ecr_repository.api.repository_url}:${var.image_tag}", essential = true,
@@ -544,6 +545,7 @@ resource "aws_ecs_task_definition" "web" {
   requires_compatibilities = ["FARGATE"]
   cpu                      = 256
   memory                   = 512
+  skip_destroy             = true
   execution_role_arn       = aws_iam_role.ecs_execution.arn
   container_definitions = jsonencode([{ name = "web", image = "${aws_ecr_repository.web.repository_url}:${var.image_tag}", essential = true,
     portMappings     = [{ containerPort = 3000, protocol = "tcp" }],

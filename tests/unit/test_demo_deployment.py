@@ -103,6 +103,8 @@ def test_aws_badge_and_required_make_commands_are_present() -> None:
     assert all(name in badge for name in ("Deployed on AWS", "ECS", "Textract", "DynamoDB", "S3"))
     for target in ("deploy-staging:", "rollback-staging:", "seed-demo:", "health-check:"):
         assert target in makefile
+    terraform = (ROOT / "infra" / "aws" / "main.tf").read_text()
+    assert terraform.count("skip_destroy             = true") == 2
 
 
 def test_backup_video_manifest_has_one_slot_per_scenario() -> None:
