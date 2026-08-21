@@ -179,8 +179,10 @@ def test_t9_dynamodb_gsi_bl_candidate_lookup_is_under_50ms() -> None:
     class FakeTable:
         def __init__(self) -> None:
             self.queried_indexes: list[str] = []
+            self.get_count = 0
 
         def get_item(self, **_kwargs: object) -> dict[str, object]:
+            self.get_count += 1
             return {}
 
         def query(self, **kwargs: object) -> dict[str, object]:
@@ -197,7 +199,8 @@ def test_t9_dynamodb_gsi_bl_candidate_lookup_is_under_50ms() -> None:
     candidates = asyncio.run(registry.find_candidates(signal))
     elapsed_ms = (perf_counter() - started) * 1000
     assert candidates
-    assert "gsi_bl_number" in registry.table.queried_indexes
+    assert registry.table.queried_indexes == ["gsi_bl_number"]
+    assert registry.table.get_count == 0
     assert elapsed_ms < 50
 
 

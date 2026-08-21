@@ -11,6 +11,10 @@ data "aws_subnets" "default" {
   }
 }
 
+data "aws_route_tables" "default" {
+  vpc_id = data.aws_vpc.default.id
+}
+
 locals {
   name       = "tradesentry-${var.environment}"
   vpc_id     = coalesce(var.vpc_id, data.aws_vpc.default.id)
@@ -169,6 +173,13 @@ resource "aws_security_group" "ecs" {
     protocol    = "tcp"
     cidr_blocks = [local.vpc_cidr]
   }
+}
+
+resource "aws_vpc_endpoint" "dynamodb" {
+  vpc_id            = local.vpc_id
+  service_name      = "com.amazonaws.${var.aws_region}.dynamodb"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = data.aws_route_tables.default.ids
 }
 
 resource "aws_security_group" "alb" {

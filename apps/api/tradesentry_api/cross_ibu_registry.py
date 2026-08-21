@@ -101,6 +101,25 @@ class DynamoDBCrossIBURegistry:
 
     async def find_candidates(self, signal: RegistrySignal) -> list[RegistryRegistration]:
         items: dict[str, dict[str, Any]] = {}
+        now_epoch = int(datetime.now(UTC).timestamp())
+
+        # An external exact B/L match is already the highest-priority result. Use the
+        # dedicated GSI as a fast path and avoid five unnecessary network operations.
+        if signal.bl_number_normalized:
+            response = self.table.query(
+                IndexName="gsi_bl_number",
+                KeyConditionExpression=Key("bl_number_normalized").eq(
+                    signal.bl_number_normalized
+                ),
+            )
+            exact_bl = [
+                self._registration(item)
+                for item in response.get("Items", [])
+                if item["ibu_id"] != signal.ibu_id and int(item["ttl"]) > now_epoch
+            ]
+            if exact_bl:
+                return exact_bl
+
         sort_key = f"DNA#{signal.dna_fingerprint}"
         for ibu_id in matching_config()["simulated_ibus"]:
             response = self.table.get_item(Key={"PK": f"IBU#{ibu_id}", "SK": sort_key})
@@ -108,7 +127,6 @@ class DynamoDBCrossIBURegistry:
                 item = response["Item"]
                 items[item["registration_id"]] = item
         queries = (
-            ("gsi_bl_number", "bl_number_normalized", signal.bl_number_normalized),
             ("gsi_vessel_date", "vessel_normalized", signal.vessel_normalized),
             ("gsi_exporter", "exporter_normalized", signal.exporter_normalized),
         )
@@ -121,7 +139,6 @@ class DynamoDBCrossIBURegistry:
             )
             for item in response.get("Items", []):
                 items[item["registration_id"]] = item
-        now_epoch = int(datetime.now(UTC).timestamp())
         return [
             self._registration(item)
             for item in items.values()
