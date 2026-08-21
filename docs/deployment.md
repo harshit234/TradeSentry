@@ -54,6 +54,10 @@ Manager, and starts one API and one web task. No credential is written to disk.
 both services, waits for stability, and re-runs the health gate. It fails closed
 when a previous revision is unavailable.
 
+Terraform retains earlier ECS task-definition revisions so rollback targets an
+immutable image that was deployed previously. The API task uses 1 vCPU and 2 GB
+memory to keep the live DynamoDB demonstration path responsive.
+
 ## Verification
 
 The release gate requires `/health` to report `ok` for PostgreSQL, Redis, S3,
