@@ -255,7 +255,7 @@ resource "aws_db_parameter_group" "postgres_ssl" {
   parameter {
     name         = "rds.force_ssl"
     value        = "1"
-    apply_method = "immediate"
+    apply_method = "pending-reboot"
   }
 }
 
@@ -509,8 +509,8 @@ resource "aws_ecs_task_definition" "api" {
   family                   = "tradesentry-api"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  cpu                      = 256
-  memory                   = 512
+  cpu                      = 1024
+  memory                   = 2048
   task_role_arn            = aws_iam_role.ecs_task.arn
   execution_role_arn       = aws_iam_role.ecs_execution.arn
   container_definitions = jsonencode([{ name = "api", image = "${aws_ecr_repository.api.repository_url}:${var.image_tag}", essential = true,
