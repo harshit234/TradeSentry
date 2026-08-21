@@ -5,6 +5,7 @@ COPY models ./models
 COPY rules ./rules
 COPY dna ./dna
 COPY cross_ibu ./cross_ibu
+COPY fraud_tbml ./fraud_tbml
 RUN pip install --no-cache-dir --prefix=/install .
 
 FROM python:3.12-slim
@@ -15,6 +16,7 @@ COPY models ./models
 COPY rules ./rules
 COPY dna ./dna
 COPY cross_ibu ./cross_ibu
+COPY fraud_tbml ./fraud_tbml
 COPY apps/api ./apps/api
 COPY db ./db
 COPY scripts ./scripts

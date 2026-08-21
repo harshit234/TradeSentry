@@ -1,0 +1,8 @@
+{
+  "data_source": "Synthetic corporate registry demo fixture",
+  "version": "synthetic-demo-2024-v1",
+  "records": [
+    {"name": "ABC Trading Ltd", "country": "India", "known_relationships": []},
+    {"name": "XYZ Imports Pte Ltd", "country": "Singapore", "known_relationships": []}
+  ]
+}

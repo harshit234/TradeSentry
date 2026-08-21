@@ -26,6 +26,8 @@ class Settings(BaseModel):
     max_upload_bytes: int = 50 * 1024 * 1024
     textract_confidence_threshold: float = 0.70
     textract_timeout_seconds: int = 120
+    fraud_tool_timeout_seconds: float = 30.0
+    fraud_tool_retry_count: int = 1
     bedrock_model_id: str | None = None
     log_level: str = "INFO"
 
@@ -54,6 +56,8 @@ class Settings(BaseModel):
             max_upload_bytes=int(os.getenv("MAX_UPLOAD_BYTES", str(50 * 1024 * 1024))),
             textract_confidence_threshold=float(os.getenv("TEXTRACT_CONFIDENCE_THRESHOLD", "0.70")),
             textract_timeout_seconds=int(os.getenv("TEXTRACT_TIMEOUT_SECONDS", "120")),
+            fraud_tool_timeout_seconds=float(os.getenv("FRAUD_TOOL_TIMEOUT_SECONDS", "30")),
+            fraud_tool_retry_count=int(os.getenv("FRAUD_TOOL_RETRY_COUNT", "1")),
             bedrock_model_id=os.getenv("BEDROCK_MODEL_ID"),
             log_level=os.getenv("LOG_LEVEL", "INFO"),
         )

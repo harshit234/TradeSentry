@@ -1,0 +1,10 @@
+{
+  "data_source": "OFAC SDN public data (minimal static test fixture)",
+  "version": "static-demo-2024-08-21-v1",
+  "list_date": "2024-08-21",
+  "possible_match_threshold": 0.82,
+  "records": [
+    {"name": "North Star Trading Company", "list": "OFAC SDN", "source_identifier": "SDN-DEMO-1001"},
+    {"name": "Global Maritime Holdings", "list": "UN Consolidated", "source_identifier": "UN-DEMO-2001"}
+  ]
+}

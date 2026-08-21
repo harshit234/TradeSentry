@@ -22,7 +22,7 @@ requires = ["setuptools>=75"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["models", "rules", "dna", "cross_ibu"]
+packages = ["models", "rules", "dna", "cross_ibu", "fraud_tbml"]
 
 [tool.setuptools.package-data]
 rules = ["config/*.json"]
@@ -51,5 +51,5 @@ target-version = "py311"
 [tool.mypy]
 python_version = "3.11"
 strict = true
-packages = ["tradesentry_api", "models", "dna", "cross_ibu"]
+packages = ["tradesentry_api", "models", "dna", "cross_ibu", "fraud_tbml"]
 mypy_path = "apps/api"

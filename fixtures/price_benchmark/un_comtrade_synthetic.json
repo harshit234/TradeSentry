@@ -1,0 +1,14 @@
+{
+  "data_source": "UN Comtrade 2024-Q2 (synthetic demo data)",
+  "version": "synthetic-demo-2024-Q2-v1",
+  "records": {
+    "1006.30|India|Singapore|2024-Q2": {
+      "reference_min": 220,
+      "reference_p25": 265,
+      "reference_p50": 305,
+      "reference_p75": 325,
+      "reference_p90": 340,
+      "confidence": 0.8
+    }
+  }
+}

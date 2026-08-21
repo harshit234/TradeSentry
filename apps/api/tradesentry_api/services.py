@@ -4,6 +4,13 @@ from typing import Protocol
 import boto3  # type: ignore[import-untyped]
 from botocore.exceptions import ClientError  # type: ignore[import-untyped]
 
+from fraud_tbml import (
+    MockEntityVerificationProvider,
+    MockPriceBenchmarkProvider,
+    MockSanctionsScreeningProvider,
+    MockVesselVerificationProvider,
+)
+
 from .audit_store import AuditStore, InMemoryAuditStore, PostgresAuditStore
 from .compliance_store import (
     ComplianceStore,
@@ -22,6 +29,7 @@ from .dna_store import (
     PostgresTransactionDNAStore,
     TransactionDNAStore,
 )
+from .fraud_tbml_runner import FraudTBMLToolRunner
 from .ocr import (
     BedrockLLMFallback,
     LLMFallback,
@@ -88,6 +96,7 @@ class Services:
     dna_store: TransactionDNAStore
     cross_ibu_registry: CrossIBURegistry
     audit_store: AuditStore
+    fraud_tbml_runner: FraudTBMLToolRunner
 
     @classmethod
     def build(cls, settings: Settings) -> "Services":
@@ -142,6 +151,15 @@ class Services:
             else NoOpLLMFallback()
         )
         processor = DocumentProcessor(repository, ocr, fallback, settings.s3_bucket)
+        fraud_tbml_runner = FraudTBMLToolRunner(
+            MockPriceBenchmarkProvider(),
+            MockVesselVerificationProvider(),
+            MockEntityVerificationProvider(),
+            MockSanctionsScreeningProvider(),
+            audit_store,
+            timeout_seconds=settings.fraud_tool_timeout_seconds,
+            retry_count=settings.fraud_tool_retry_count,
+        )
         return cls(
             database,
             redis,
@@ -154,6 +172,7 @@ class Services:
             dna_store,
             cross_ibu_registry,
             audit_store,
+            fraud_tbml_runner,
         )
 
     async def close(self) -> None:
