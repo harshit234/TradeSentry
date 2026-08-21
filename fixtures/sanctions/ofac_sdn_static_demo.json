@@ -5,6 +5,7 @@
   "possible_match_threshold": 0.82,
   "records": [
     {"name": "North Star Trading Company", "list": "OFAC SDN", "source_identifier": "SDN-DEMO-1001"},
-    {"name": "Global Maritime Holdings", "list": "UN Consolidated", "source_identifier": "UN-DEMO-2001"}
+    {"name": "Global Maritime Holdings", "list": "UN Consolidated", "source_identifier": "UN-DEMO-2001"},
+    {"name": "Al Bader Trading LLC", "list": "OFAC SDN", "source_identifier": "SDN-DEMO-3001"}
   ]
 }

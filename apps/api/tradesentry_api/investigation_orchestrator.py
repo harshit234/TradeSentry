@@ -441,7 +441,35 @@ class InvestigationOrchestrator:
             and any(item.severity is Severity.MATERIAL for item in state.compliance_result.findings)
         )
         exact = any(item.match_level is MatchLevel.EXACT for item in state.cross_ibu_matches)
-        requires_review = state.requires_human_review or band.value == "HIGH" or material or exact
+        near = any(item.match_level is MatchLevel.NEAR for item in state.cross_ibu_matches)
+        dna_attention = bool(
+            state.transaction_dna
+            and (state.transaction_dna.confidence_flags or state.transaction_dna.conflicts)
+        )
+        external_signal = bool(
+            (state.price_benchmark and state.price_benchmark.signal is not PriceSignal.NORMAL)
+            or (
+                state.vessel_verification
+                and state.vessel_verification.verification_result
+                is VesselVerificationStatus.ANOMALY
+            )
+            or (
+                state.sanctions_result
+                and any(
+                    item.match_status is not SanctionsMatchStatus.NO_MATCH
+                    for item in state.sanctions_result.screened_entities
+                )
+            )
+        )
+        requires_review = (
+            state.requires_human_review
+            or band.value == "HIGH"
+            or material
+            or exact
+            or near
+            or dna_attention
+            or external_signal
+        )
         return {
             "risk_score": score,
             "risk_band": band,
@@ -606,6 +634,39 @@ def _failure_update(
 
 def _evidence(state: InvestigationState) -> list[EvidenceRecord]:
     records: list[EvidenceRecord] = []
+    if state.transaction_dna is not None:
+        for field_name in state.transaction_dna.confidence_flags:
+            records.append(
+                EvidenceRecord(
+                    source="transaction_dna",
+                    finding_type="LOW_CONFIDENCE_FIELD",
+                    severity=EvidenceSeverity.ADVISORY,
+                    summary=f"Low-confidence extraction requires attention: {field_name}",
+                    structured_detail={"field_name": field_name, "human_attention": True},
+                    evidence_ref=(
+                        f"dna://{state.transaction_dna.transaction_id}/confidence/{field_name}"
+                    ),
+                )
+            )
+        for conflict in state.transaction_dna.conflicts:
+            records.append(
+                EvidenceRecord(
+                    source="transaction_dna",
+                    finding_type="DOCUMENT_CONFLICT",
+                    severity=EvidenceSeverity.REVIEW,
+                    summary=f"Conflicting structured document evidence: {conflict.field_name}",
+                    structured_detail={
+                        "field_name": conflict.field_name,
+                        "document_a_id": conflict.document_a_id,
+                        "document_b_id": conflict.document_b_id,
+                        "conflict_severity": conflict.severity.value,
+                    },
+                    evidence_ref=(
+                        f"dna://{state.transaction_dna.transaction_id}/conflict/"
+                        f"{conflict.field_name}"
+                    ),
+                )
+            )
     if state.tool_selection_plan is not None:
         records.append(
             EvidenceRecord(

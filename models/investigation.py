@@ -30,6 +30,7 @@ class RiskBand(StrEnum):
 
 class EvidenceSeverity(StrEnum):
     INFO = "INFO"
+    ADVISORY = "ADVISORY"
     REVIEW = "REVIEW"
     MATERIAL = "MATERIAL"
     HIGH = "HIGH"
@@ -138,4 +139,3 @@ class InvestigationResponse(BaseModel):
 
     state: InvestigationState
     workflow_status: Literal["COMPLETED", "INTERRUPTED"]
-

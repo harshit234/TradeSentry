@@ -10,6 +10,7 @@ from botocore.exceptions import ClientError  # type: ignore[import-untyped]
 from pydantic import ValidationError
 from pypdf import PdfReader
 
+from agents.guardrails import prompt_injection_fingerprint
 from models.contracts import (
     BillOfLadingFields,
     CertificateOfOriginFields,
@@ -186,6 +187,16 @@ class DocumentProcessor:
                 document.document_type,
                 page_count(data, document.mime_type),
             )
+            injection_fingerprint = prompt_injection_fingerprint(raw.full_text)
+            if injection_fingerprint is not None:
+                document.advisory = (
+                    "Instruction-like document content was isolated and flagged for human review"
+                )
+                await self._audit(
+                    document,
+                    AuditEventType.AGENT_DECISION,
+                    f"prompt-injection/{injection_fingerprint}",
+                )
             if document.document_type is DocumentType.UNKNOWN:
                 document.document_type = classify_document(document.filename, raw.full_text)
             document.textract_job_id = raw.job_id

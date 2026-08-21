@@ -115,6 +115,7 @@
       "input": {"field": "bl_number", "confidence": 0.39},
       "expected": {
         "confidence_flag": "bl_number",
+        "dna_confidence_flag": "bl_number_normalized",
         "dna_low_confidence_noted": true,
         "finding_severity": "ADVISORY",
         "human_attention": true

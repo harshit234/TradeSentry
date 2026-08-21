@@ -4,6 +4,7 @@
   "records": [
     {"vessel_name": "OCEAN STAR", "imo_number": "9876543", "port": "Mundra", "port_date": "2024-08-14", "confidence": 0.9},
     {"vessel_name": "SEA EAGLE", "imo_number": "8765432", "port": "Kandla", "port_date": "2024-08-20", "confidence": 0.9},
-    {"vessel_name": "SEA BREEZE", "imo_number": "7654321", "port": "Mundra", "port_date": "2024-09-01", "confidence": 0.9}
+    {"vessel_name": "SEA BREEZE", "imo_number": "7654321", "port": "Mundra", "port_date": "2024-09-01", "confidence": 0.9},
+    {"vessel_name": "RED SEA VOYAGER", "imo_number": "7000001", "port": "Gulf of Aden", "port_date": "2024-08-14", "confidence": 0.9}
   ]
 }
