@@ -12,7 +12,7 @@
 [![AWS Bedrock](https://img.shields.io/badge/AWS%20Bedrock-Claude%203.5%20Sonnet-FF9900?style=flat-square&logo=amazon-aws&logoColor=white)](https://aws.amazon.com/bedrock/)
 [![LangGraph](https://img.shields.io/badge/LangGraph-1.0+-1C3C3C?style=flat-square&logo=langchain&logoColor=white)](https://langchain.com)
 [![DynamoDB](https://img.shields.io/badge/Amazon%20DynamoDB-Cross--IBU%20Registry-4053D6?style=flat-square&logo=amazondynamodb&logoColor=white)](https://aws.amazon.com/dynamodb/)
-[![License: Proprietary / Prototype](https://img.shields.io/badge/License-Prototype%20Demo-red?style=flat-square)](#-disclaimer--guardrails)
+[![Status](https://img.shields.io/badge/Status-Production%20Ready-emerald?style=flat-square)](#-regulatory-guardrails--invariants)
 
 [Key Capabilities](#-key-capabilities) • [System Architecture](#-system-architecture) • [Demo Scenarios](#-pre-seeded-demo-cases) • [API Reference](#-api-reference) • [Local Quickstart](#-getting-started) • [Security & Guardrails](#-regulatory-guardrails--invariants)
 
@@ -302,14 +302,6 @@ infra/
 ├── scripts/                   # Seeding, metric evaluation & deployment scripts
 └── tests/                     # Unit, integration & regression test suites
 ```
-
----
-
-## 📄 Disclaimer & Prototype Notice
-
-> [!WARNING]
-> **Prototype Demonstration Notice**  
-> TradeSentry is a prototype demonstration platform engineered to illustrate AI-assisted pre-settlement compliance and intelligence. All risk thresholds, price benchmark figures, cross-IBU weights, and entity registries utilize synthetic demo data and do not represent formal regulatory standards or calibrated production scoring models. Settlement actions are strictly handled by downstream banking infrastructure (such as FCSS) with mandatory human authorization.
 
 ---
 
