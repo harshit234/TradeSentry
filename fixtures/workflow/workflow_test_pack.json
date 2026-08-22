@@ -1,0 +1,125 @@
+{
+  "schema_version": "1.0",
+  "dataset_name": "TradeSentry 11-Step Synthetic Workflow Pack",
+  "synthetic_only": true,
+  "contains_real_customer_data": false,
+  "settlement_execution_authorized": false,
+  "human_approval_required": true,
+  "threshold_note": "All risk thresholds and scores are prototype demo values, not regulatory standards.",
+  "supporting_fixtures": {
+    "price_corridor": "../price_benchmark/un_comtrade_synthetic.json",
+    "ais_vessel_track": "../vessel_schedules/ais_synthetic.json",
+    "sanctions": "../sanctions/ofac_sdn_static_demo.json",
+    "entity_network": "../entities/entity_registry_synthetic.json"
+  },
+  "cases": [
+    {
+      "scenario_id": "WF-001-CLEAN",
+      "name": "Complete compliant presentation",
+      "case_id": "SYN-WF-CLEAN-001",
+      "presenting_ibu": "IBU-A",
+      "source_fixture": "../pre_extracted/DEMO-CASE-A.json",
+      "sample_documents": "../sample_documents/case_a_clean",
+      "mutations": [],
+      "expected": {
+        "steps": ["COMPLETE", "COMPLETE", "COMPLETE", "PASS", "PASS", "COMPLETE", "CLEAR", "CLEAR", "CLEAR", "LOW", "PENDING_HUMAN_REVIEW"],
+        "risk_band": "LOW",
+        "automatic_settlement": false,
+        "findings": []
+      }
+    },
+    {
+      "scenario_id": "WF-002-INCOMPLETE",
+      "name": "Missing required insurance certificate",
+      "case_id": "SYN-WF-INCOMPLETE-002",
+      "presenting_ibu": "IBU-A",
+      "source_fixture": "../pre_extracted/DEMO-CASE-A.json",
+      "sample_documents": "../sample_documents/case_a_clean",
+      "mutations": [
+        {"operation": "remove_document", "filename": "insurance_certificate.pdf"}
+      ],
+      "expected": {
+        "steps": ["COMPLETE", "COMPLETE", "INCOMPLETE", "NOT_RUN", "NOT_RUN", "NOT_RUN", "NOT_RUN", "NOT_RUN", "NOT_RUN", "REVIEW", "PENDING_HUMAN_REVIEW"],
+        "risk_band": "REVIEW",
+        "missing_documents": ["insurance_certificate"],
+        "automatic_settlement": false,
+        "findings": []
+      }
+    },
+    {
+      "scenario_id": "WF-003-ART14D-CONFLICT",
+      "name": "Cross-document quantity conflict",
+      "case_id": "SYN-WF-CONFLICT-003",
+      "presenting_ibu": "IBU-A",
+      "source_fixture": "../pre_extracted/DEMO-CASE-A.json",
+      "sample_documents": "../sample_documents/case_a_clean",
+      "mutations": [
+        {"operation": "set_field", "filename": "packing_list.pdf", "field": "total_quantity", "value": 480, "confidence": 0.98, "page": 1}
+      ],
+      "expected": {
+        "steps": ["COMPLETE", "COMPLETE", "COMPLETE", "REVIEW", "REVIEW", "COMPLETE", "CLEAR", "CLEAR", "CLEAR", "REVIEW", "PENDING_HUMAN_REVIEW"],
+        "risk_band": "REVIEW",
+        "automatic_settlement": false,
+        "findings": [
+          {
+            "rule_id": "UCP600-ART14D-DATA-CONSISTENCY",
+            "ucp_article": "Art. 14(d)",
+            "expected_value": "500 MT",
+            "actual_value": "480 MT",
+            "evidence": {"document": "packing_list.pdf", "field": "total_quantity", "page": 1}
+          }
+        ]
+      }
+    },
+    {
+      "scenario_id": "WF-004-DUPLICATE",
+      "name": "Exact duplicate financing signal across IBUs",
+      "case_id": "SYN-WF-DUPLICATE-004",
+      "presenting_ibu": "IBU-B",
+      "source_fixture": "../pre_extracted/DEMO-CASE-B.json",
+      "sample_documents": "../sample_documents/case_b_duplicate",
+      "mutations": [],
+      "registry_setup": {"existing_case": "DEMO-CASE-A", "existing_ibu": "IBU-A", "shared_bl_number": "BL789456"},
+      "expected": {
+        "steps": ["COMPLETE", "COMPLETE", "COMPLETE", "PASS", "PASS", "COMPLETE", "REVIEW", "REVIEW", "CLEAR", "HIGH", "PENDING_HUMAN_REVIEW"],
+        "risk_band": "HIGH",
+        "duplicate_signal": "EXACT",
+        "automatic_settlement": false,
+        "findings": []
+      }
+    },
+    {
+      "scenario_id": "WF-005-TBML",
+      "name": "Price corridor and vessel-track investigation signals",
+      "case_id": "SYN-WF-TBML-005",
+      "presenting_ibu": "IBU-A",
+      "source_fixture": "../pre_extracted/DEMO-CASE-C.json",
+      "sample_documents": "../sample_documents/case_c_tbml",
+      "mutations": [],
+      "expected": {
+        "steps": ["COMPLETE", "COMPLETE", "COMPLETE", "REVIEW", "REVIEW", "COMPLETE", "CLEAR", "CLEAR", "REVIEW", "HIGH", "PENDING_HUMAN_REVIEW"],
+        "risk_band": "HIGH",
+        "investigation_signals": ["PRICE_CORRIDOR_P90", "AIS_VESSEL_TRACK"],
+        "risk_is_investigation_signal_only": true,
+        "automatic_settlement": false,
+        "findings": []
+      }
+    },
+    {
+      "scenario_id": "WF-006-LEGIT-SECOND-BANK",
+      "name": "Legitimate distinct presentation at another IBU",
+      "case_id": "SYN-WF-LEGIT-006",
+      "presenting_ibu": "IBU-C",
+      "source_fixture": "../pre_extracted/DEMO-CASE-D.json",
+      "sample_documents": "../sample_documents/case_d_legit",
+      "mutations": [],
+      "expected": {
+        "steps": ["COMPLETE", "COMPLETE", "COMPLETE", "PASS", "PASS", "COMPLETE", "CLEAR", "CLEAR", "CLEAR", "LOW", "PENDING_HUMAN_REVIEW"],
+        "risk_band": "LOW",
+        "duplicate_signal": "NONE",
+        "automatic_settlement": false,
+        "findings": []
+      }
+    }
+  ]
+}

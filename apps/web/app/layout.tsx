@@ -1,17 +1,27 @@
 import type { Metadata } from "next";
-import "./styles.css";
-import "./review.css";
-import "./table.css";
+import "./globals.css";
+import { ClientProviders } from "./providers";
 
 export const metadata: Metadata = {
-  title: "TradeSentry | Trade Finance Intelligence",
-  description: "Human-authorized pre-settlement intelligence for simulated GIFT City IBUs.",
+  title: "Trade Finance Intelligence | GIFT City IBU",
+  description:
+    "AI-assisted pre-settlement trade-finance intelligence platform for GIFT City International Banking Units.",
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default function RootLayout({
+  children,
+}: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <head>
+        <link
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+          rel="stylesheet"
+        />
+      </head>
+      <body>
+        <ClientProviders>{children}</ClientProviders>
+      </body>
     </html>
   );
 }
